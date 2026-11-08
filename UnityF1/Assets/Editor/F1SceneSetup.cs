@@ -238,11 +238,23 @@ namespace F1Sim.Editor
                     cam.fieldOfView = 80.0f;
                     CaptureCameraToPng(cam, Path.Combine(rootOut, "Preview_3D_Cockpit.png"), 1920, 1080);
 
+                    // Shot B2: Driver Arms & Animated Steering Wheel Cockpit View
+                    cam.transform.position = carTf.TransformPoint(new Vector3(0.0f, 0.68f, -0.24f));
+                    cam.transform.rotation = carTf.rotation * Quaternion.Euler(8.0f, 0.0f, 0.0f);
+                    cam.fieldOfView = 76.0f;
+                    CaptureCameraToPng(cam, Path.Combine(rootOut, "Preview_3D_Cockpit_Arms.png"), 1920, 1080);
+
                     // Shot C: External Chase / Broadcast Grid View
                     cam.transform.position = carTf.TransformPoint(new Vector3(0.0f, 2.05f, -5.4f));
                     cam.transform.LookAt(carTf.position + carTf.forward * 16.0f + Vector3.up * 0.7f, Vector3.up);
                     cam.fieldOfView = 60.0f;
                     CaptureCameraToPng(cam, Path.Combine(rootOut, "Preview_3D_Chase.png"), 1920, 1080);
+
+                    // Shot D: Grand Monza Circuit Aerial Overview (5,793m Autodromo Nazionale Layout + Royal Parkland + Alps)
+                    cam.transform.position = new Vector3(250.0f, 1550.0f, 950.0f);
+                    cam.transform.LookAt(new Vector3(250.0f, 0.0f, 1100.0f), Vector3.forward);
+                    cam.fieldOfView = 70.0f;
+                    CaptureCameraToPng(cam, Path.Combine(rootOut, "Preview_3D_Monza.png"), 1920, 1080);
                 }
             }
 

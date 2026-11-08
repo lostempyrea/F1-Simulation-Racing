@@ -21,6 +21,14 @@ namespace F1Sim.Cockpit
         public Camera leftMirrorCamera;
         public Camera rightMirrorCamera;
 
+        [Header("Driver Arms & Gloves")]
+        public Transform leftArmTransform;
+        public Transform rightArmTransform;
+        public Transform leftGloveTransform;
+        public Transform rightGloveTransform;
+        public Transform leftShoulderAnchor;
+        public Transform rightShoulderAnchor;
+
         [Header("Halo Settings")]
         public float haloOpacity = 1.0f; // 1.0 -> 0.35 -> 0.15 -> 1.0
 
@@ -261,6 +269,85 @@ namespace F1Sim.Cockpit
                     new Vector3(side * 0.50f, 0.52f, 0.312f), new Vector3(0.0f, side * 12.0f, 0.0f),
                     new Vector3(0.135f, 0.054f, 0.006f), chromeMat);
             }
+
+            // 7. 3D Driver Arms & Gloves (Fireproof Nomex Suit Sleeves & Biometric Racing Gloves)
+            Material suitMat = F1Palette.GetOrCreateMaterial("Mat_DriverSuit", new Color(0.92f, 0.92f, 0.95f), 0.1f, 0.25f);
+            Material suitStripeMat = F1Palette.GetOrCreateMaterial("Mat_SuitStripe", F1Palette.RacingRed, 0.2f, 0.4f);
+            Material gloveMat = F1Palette.GetOrCreateMaterial("Mat_DriverGlove", new Color(0.12f, 0.12f, 0.14f), 0.15f, 0.35f);
+            Material gripPadMat = F1Palette.GetOrCreateMaterial("Mat_GripPad", F1Palette.RacingRed, 0.3f, 0.6f);
+
+            GameObject armsRoot = new GameObject("Driver_Arms_Assembly");
+            armsRoot.transform.SetParent(cockpitRoot.transform, false);
+
+            // Left & Right Shoulder Anchors inside cockpit bolsters
+            GameObject lShoulder = new GameObject("Anchor_Shoulder_L");
+            lShoulder.transform.SetParent(armsRoot.transform, false);
+            lShoulder.transform.localPosition = new Vector3(-0.24f, 0.30f, -0.15f);
+            leftShoulderAnchor = lShoulder.transform;
+
+            GameObject rShoulder = new GameObject("Anchor_Shoulder_R");
+            rShoulder.transform.SetParent(armsRoot.transform, false);
+            rShoulder.transform.localPosition = new Vector3(0.24f, 0.30f, -0.15f);
+            rightShoulderAnchor = rShoulder.transform;
+
+            // Gloves gripping wheel body at 9 o'clock and 3 o'clock (child of wheelBody so they turn 1:1 with wheel)
+            GameObject lGlove = new GameObject("Driver_Glove_L");
+            lGlove.transform.SetParent(wheelBody.transform, false);
+            lGlove.transform.localPosition = new Vector3(-0.128f, -0.005f, -0.012f);
+            lGlove.transform.localRotation = Quaternion.Euler(0.0f, 0.0f, 8.0f);
+            leftGloveTransform = lGlove.transform;
+
+            GameObject rGlove = new GameObject("Driver_Glove_R");
+            rGlove.transform.SetParent(wheelBody.transform, false);
+            rGlove.transform.localPosition = new Vector3(0.128f, -0.005f, -0.012f);
+            rGlove.transform.localRotation = Quaternion.Euler(0.0f, 0.0f, -8.0f);
+            rightGloveTransform = rGlove.transform;
+
+            // Detail glove geometry for Left & Right hands
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Transform gParent = (side < 0) ? lGlove.transform : rGlove.transform;
+
+                // Glove back/palm
+                CreateCockpitPart(PrimitiveType.Cube, "Glove_Palm", gParent,
+                    Vector3.zero, Vector3.zero, new Vector3(0.046f, 0.068f, 0.038f), gloveMat);
+
+                // High-grip silicone palm patch
+                CreateCockpitPart(PrimitiveType.Cube, "Glove_Silicone_Grip", gParent,
+                    new Vector3(0.0f, 0.0f, 0.018f), Vector3.zero, new Vector3(0.038f, 0.052f, 0.006f), gripPadMat);
+
+                // Thumb resting on front face
+                CreateCockpitPart(PrimitiveType.Cylinder, "Glove_Thumb", gParent,
+                    new Vector3(side * -0.018f, 0.026f, -0.012f), new Vector3(15.0f, 0.0f, side * -25.0f),
+                    new Vector3(0.016f, 0.024f, 0.016f), gloveMat);
+
+                // Fingers wrapped around grip
+                CreateCockpitPart(PrimitiveType.Cube, "Glove_Fingers_Wrap", gParent,
+                    new Vector3(side * 0.014f, -0.005f, 0.022f), Vector3.zero,
+                    new Vector3(0.024f, 0.058f, 0.022f), gloveMat);
+
+                // Glove wrist cuff
+                CreateCockpitPart(PrimitiveType.Cylinder, "Glove_Wrist_Cuff", gParent,
+                    new Vector3(0.0f, -0.042f, -0.008f), new Vector3(35.0f, 0.0f, 0.0f),
+                    new Vector3(0.048f, 0.018f, 0.048f), suitStripeMat);
+            }
+
+            // Driver Forearm Sleeves spanning from shoulders to gloves
+            GameObject lArm = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            lArm.name = "Driver_Arm_Left";
+            lArm.transform.SetParent(armsRoot.transform, false);
+            Destroy(lArm.GetComponent<Collider>());
+            lArm.GetComponent<Renderer>().sharedMaterial = suitMat;
+            leftArmTransform = lArm.transform;
+
+            GameObject rArm = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            rArm.name = "Driver_Arm_Right";
+            rArm.transform.SetParent(armsRoot.transform, false);
+            Destroy(rArm.GetComponent<Collider>());
+            rArm.GetComponent<Renderer>().sharedMaterial = suitMat;
+            rightArmTransform = rArm.transform;
+
+            UpdateDriverArmsKinematics();
         }
 
         private GameObject CreateCockpitPart(
@@ -304,6 +391,33 @@ namespace F1Sim.Cockpit
 
                 steeringWheelTransform.localRotation = Quaternion.Euler(0.0f, 0.0f, -wheelRotationDeg);
             }
+
+            UpdateDriverArmsKinematics();
+        }
+
+        private void UpdateDriverArmsKinematics()
+        {
+            if (leftShoulderAnchor != null && leftGloveTransform != null && leftArmTransform != null)
+            {
+                AlignArmToHand(leftShoulderAnchor, leftGloveTransform, leftArmTransform);
+            }
+            if (rightShoulderAnchor != null && rightGloveTransform != null && rightArmTransform != null)
+            {
+                AlignArmToHand(rightShoulderAnchor, rightGloveTransform, rightArmTransform);
+            }
+        }
+
+        private void AlignArmToHand(Transform shoulder, Transform glove, Transform arm)
+        {
+            Vector3 p0 = shoulder.position;
+            Vector3 p1 = glove.position;
+            Vector3 dir = p1 - p0;
+            float dist = dir.magnitude;
+            if (dist < 0.01f) return;
+
+            arm.position = (p0 + p1) * 0.5f;
+            arm.rotation = Quaternion.LookRotation(dir.normalized, transform.up) * Quaternion.Euler(90.0f, 0.0f, 0.0f);
+            arm.localScale = new Vector3(0.072f, dist * 0.5f, 0.072f);
         }
 
         public void CycleHaloOpacity()

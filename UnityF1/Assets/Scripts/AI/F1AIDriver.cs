@@ -35,6 +35,7 @@ namespace F1Sim.AI
         public AIDriverProfile profile;
         public VehicleDynamics vehicle;
         public TrackSpline trackSpline;
+        public F1AutonomousPilot autonomousPilot;
 
         [Header("Telemetry State")]
         public float currentS = 0.0f;
@@ -48,10 +49,30 @@ namespace F1Sim.AI
         private void Awake()
         {
             if (vehicle == null) vehicle = GetComponent<VehicleDynamics>();
+            if (autonomousPilot == null) autonomousPilot = GetComponent<F1AutonomousPilot>();
+            if (autonomousPilot == null) autonomousPilot = gameObject.AddComponent<F1AutonomousPilot>();
+            if (autonomousPilot != null)
+            {
+                autonomousPilot.vehicle = vehicle;
+                autonomousPilot.profile = profile;
+                autonomousPilot.trackSpline = trackSpline;
+            }
         }
 
         public void StepAI(float dt, float leadCarGap = 999.0f)
         {
+            if (autonomousPilot != null)
+            {
+                autonomousPilot.profile = profile;
+                autonomousPilot.trackSpline = trackSpline;
+                autonomousPilot.StepPilot(dt, leadCarGap);
+                if (trackSpline != null && vehicle != null)
+                {
+                    trackSpline.ProjectPoint(vehicle.state.worldPosition, out currentS, out lateralOffsetD);
+                }
+                return;
+            }
+
             if (vehicle == null || trackSpline == null) return;
 
             // 1. Measure track progress s
