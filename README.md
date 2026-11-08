@@ -1,6 +1,6 @@
 # 🏎️ F1 Simulation Racing — Monza Grand Prix
 
-[![Python Tests](https://img.shields.io/badge/Physics%20Tests-47%2F47%20Passing-brightgreen?style=for-the-badge&logo=pytest)](file:///tests)
+[![Python Tests](https://img.shields.io/badge/Physics%20Tests-47%2F47%20Passing-brightgreen?style=for-the-badge&logo=pytest)](tests/)
 [![Python Version](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Unity Version](https://img.shields.io/badge/Unity-6000.3%20URP-000000?style=for-the-badge&logo=unity&logoColor=white)](https://unity.com)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
