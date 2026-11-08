@@ -27,9 +27,9 @@ namespace F1Sim.Track
             float length = spline.Length;
             int numSteps = Mathf.Max(40, Mathf.RoundToInt(length / stepSize));
 
-            // 3D Solid Road Slab Extrusion (thickness = 0.40m):
+            // 3D Solid Road Slab Extrusion (thickness = 1.20m, automatically deepening into ground on slopes):
             // 12 vertices per ring: 4 top, 4 underbelly, 2 left skirt, 2 right skirt
-            float roadThickness = 0.40f;
+            float baseThickness = 1.20f;
             List<Vector3> vertices = new List<Vector3>(numSteps * 12);
             List<Vector3> normals = new List<Vector3>(numSteps * 12);
             List<Vector2> uvs = new List<Vector2>(numSteps * 12);
@@ -43,6 +43,14 @@ namespace F1Sim.Track
                 Vector3 center = spline.GetPoint(s);
                 spline.GetFrenetFrame(s, out Vector3 tan, out Vector3 lat, out Vector3 norm);
 
+                // Dynamically deepen slab on slopes and elevated sections (Lesmo, Ascari) so bottom embeds deeply in terrain
+                float localThickness = baseThickness;
+                if (center.y > 0.15f)
+                {
+                    // Extend down into parkland terrain level (-0.25m) with margin
+                    localThickness = Mathf.Max(baseThickness, center.y - (-0.35f));
+                }
+
                 // Top surface points (slight offset Y+0.01m)
                 Vector3 centerTop = center + norm * 0.01f;
                 Vector3 pL_top  = centerTop - lat * halfWidth;
@@ -50,12 +58,12 @@ namespace F1Sim.Track
                 Vector3 pRR_top = centerTop + lat * (halfWidth - 0.35f);
                 Vector3 pR_top  = centerTop + lat * halfWidth;
 
-                // Underbelly points (offset -0.40m)
-                Vector3 centerBot = center - norm * (roadThickness - 0.01f);
-                Vector3 pL_bot  = centerBot - lat * halfWidth;
+                // Underbelly points (offset -localThickness)
+                Vector3 centerBot = center - norm * (localThickness - 0.01f);
+                Vector3 pL_bot  = centerBot - lat * (halfWidth + 0.30f);
                 Vector3 pLL_bot = centerBot - lat * (halfWidth - 0.35f);
                 Vector3 pRR_bot = centerBot + lat * (halfWidth - 0.35f);
-                Vector3 pR_bot  = centerBot + lat * halfWidth;
+                Vector3 pR_bot  = centerBot + lat * (halfWidth + 0.30f);
 
                 float vCoord = s * 0.12f;
 

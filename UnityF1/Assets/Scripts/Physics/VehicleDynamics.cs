@@ -400,6 +400,28 @@ namespace F1Sim.Physics
 
             state.yawAngle = Mathf.Repeat(state.yawAngle + state.yawRate * dt + Mathf.PI, Mathf.PI * 2.0f) - Mathf.PI;
 
+            // 9. Ground Surface Alignment & Vertical Noclip Prevention
+            Vector3 groundProbeOrigin = state.worldPosition + Vector3.up * 8.0f;
+            if (UnityEngine.Physics.Raycast(groundProbeOrigin, Vector3.down, out RaycastHit groundHit, 25.0f, ~0, QueryTriggerInteraction.Ignore))
+            {
+                string gName = groundHit.collider.name;
+                bool isTrackOrTerrain = gName.Contains("Track") || gName.Contains("Kerb") || gName.Contains("Ground") ||
+                                       gName.Contains("Gravel") || gName.Contains("Embankment") || gName.Contains("Ribbon");
+                if (isTrackOrTerrain)
+                {
+                    float trackSurfaceY = groundHit.point.y;
+                    // Prevent car from ever dipping or clipping below elevated road mesh
+                    if (state.worldPosition.y < trackSurfaceY - 0.02f || Mathf.Abs(state.worldPosition.y - trackSurfaceY) > 0.40f)
+                    {
+                        state.worldPosition.y = trackSurfaceY;
+                    }
+                    else
+                    {
+                        state.worldPosition.y = Mathf.MoveTowards(state.worldPosition.y, trackSurfaceY, dt * 25.0f);
+                    }
+                }
+            }
+
             // Update transform
             transform.position = state.worldPosition;
             transform.rotation = Quaternion.Euler(0.0f, -state.yawAngle * Mathf.Rad2Deg + 90.0f, 0.0f);

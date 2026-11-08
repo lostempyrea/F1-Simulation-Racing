@@ -29,20 +29,22 @@ namespace F1Sim.AI
         [Header("Sensor Suite Configuration")]
         public float sensorOriginHeight = 0.28f;
         public float sensorForwardOffset = 2.15f;
-        public float maxRayDistance = 55.0f;
+        public float maxRayDistance = 150.0f;
         public LayerMask obstacleLayerMask = ~0;
 
         [Header("Control Gains")]
         public float steerKp = 2.2f;
         public float steerKd = 0.75f;
         public float curvatureFeedforward = 28.0f;
-        public float targetSpeedStraight = 94.0f; // ~338 km/h
-        public float maxCornerLateralG = 1.75f;
+        public float targetSpeedStraight = 96.0f; // ~345 km/h
+        public float maxCornerLateralG = 3.2f; // High-downforce F1 cornering limit (31.4 m/s2)
 
         [Header("State & Recovery")]
         public PilotRecoveryState recoveryState = PilotRecoveryState.Racing;
         public float recoveryTimer = 0.0f;
         public float stuckTimer = 0.0f;
+        public int consecutiveStuckCount = 0;
+        public float totalStuckRecoveryDuration = 0.0f;
 
         [Header("Telemetry (Debug Readouts)")]
         public float centerlineError = 0.0f;
@@ -194,46 +196,46 @@ namespace F1Sim.AI
 
             // 1. Calculate Target Cornering Speed from Curvature & Clearance
             float absCurv = Mathf.Abs(sensedCurvature);
-            float confidence = (profile != null) ? profile.brakingConfidence : 0.95f;
+            float confidence = (profile != null) ? profile.brakingConfidence : 0.98f;
 
-            if (absCurv > 0.035f || forwardClearance < 40.0f)
+            if (absCurv > 0.045f || forwardClearance < 65.0f)
             {
                 // Radius of upcoming bend: R = 1 / curvature
-                float estimatedRadius = 1.0f / Mathf.Max(0.015f, absCurv * 0.35f);
+                float estimatedRadius = 1.0f / Mathf.Max(0.012f, absCurv * 0.30f);
                 float maxSafeSpeed = Mathf.Sqrt(maxCornerLateralG * 9.81f * estimatedRadius);
-                targetSpeed = Mathf.Clamp(maxSafeSpeed * confidence, 26.0f, targetSpeedStraight);
+                targetSpeed = Mathf.Clamp(maxSafeSpeed * confidence, 35.0f, targetSpeedStraight);
             }
             else
             {
-                // Clear straight ahead
+                // Clear straight ahead: maximum full attack speed
                 targetSpeed = targetSpeedStraight * ((profile != null) ? profile.cornerAggression : 1.0f);
             }
 
             // 2. Proximity Braking for Rivals / Obstacles
-            if (rivalDistance < 18.0f)
+            if (rivalDistance < 15.0f)
             {
-                targetSpeed = Mathf.Min(targetSpeed, speedMs * 0.88f);
+                targetSpeed = Mathf.Min(targetSpeed, speedMs * 0.92f);
             }
 
-            // 3. Threshold Braking vs Throttle Application
+            // 3. Threshold Braking vs Aggressive Throttle Application
             float speedDelta = speedMs - targetSpeed;
-            if (speedDelta > 2.5f)
+            if (speedDelta > 4.5f)
             {
-                // Threshold braking zone: apply decisive deceleration
+                // Hard threshold braking zone
                 throttle = 0.0f;
-                brake = Mathf.Clamp01(speedDelta / 8.0f + 0.35f);
+                brake = Mathf.Clamp01(speedDelta / 6.0f + 0.45f);
             }
-            else if (speedDelta < -0.5f)
+            else if (speedDelta > 0.5f)
             {
-                // Full or progressive throttle exit
-                brake = 0.0f;
-                throttle = Mathf.Clamp01((-speedDelta) / 4.0f + 0.30f);
+                // Trail-braking into corner entry
+                throttle = 0.0f;
+                brake = Mathf.Clamp01(speedDelta / 5.0f);
             }
             else
             {
-                // Coasting / maintaining corner apex balance
-                throttle = 0.15f;
+                // Decisive acceleration: full throttle on straights and corner exits
                 brake = 0.0f;
+                throttle = (speedDelta < -3.0f) ? 1.0f : Mathf.Clamp01((-speedDelta) / 2.5f + 0.55f);
             }
         }
 
@@ -274,26 +276,67 @@ namespace F1Sim.AI
             float speed = vehicle.SpeedMs;
             float forwardWallDist = rayDistances[4];
 
-            // Condition: car has high throttle input or is blocked right up against a barrier (< 1.6m) and barely moving (< 1.8 m/s)
-            if (speed < 1.8f && (vehicle.state.throttle > 0.35f || forwardWallDist < 1.8f))
+            // Condition: barely moving (< 2.0 m/s) with throttle or front wall obstacle (< 1.8m)
+            if (speed < 2.0f && (vehicle.state.throttle > 0.25f || forwardWallDist < 2.0f))
             {
                 stuckTimer += dt;
-                if (stuckTimer > 1.4f)
+                // Quick detection threshold: 0.85s
+                if (stuckTimer > 0.85f)
                 {
                     recoveryState = PilotRecoveryState.Reversing;
-                    recoveryTimer = 1.9f;
+                    recoveryTimer = 2.4f; // generous 2.4s reverse distance
                     stuckTimer = 0.0f;
+                    consecutiveStuckCount++;
+                    totalStuckRecoveryDuration += 2.4f;
                 }
             }
             else
             {
                 stuckTimer = Mathf.Max(0.0f, stuckTimer - dt * 2.0f);
             }
+
+            // Teleport Recovery: if stuck 3 times consecutively or total recovery duration exceeds 5.0s
+            if (consecutiveStuckCount >= 3 || totalStuckRecoveryDuration > 5.0f)
+            {
+                TriggerCenterlineTeleportRecovery();
+            }
+        }
+
+        private void TriggerCenterlineTeleportRecovery()
+        {
+            if (trackSpline != null && vehicle != null)
+            {
+                trackSpline.ProjectPoint(vehicle.state.worldPosition, out float s, out _);
+                Vector3 centerPt = trackSpline.GetPoint(s);
+                Vector3 tan = trackSpline.GetTangent(s);
+                float yawRad = Mathf.Atan2(tan.z, tan.x);
+
+                vehicle.SetWorldPosition(centerPt + Vector3.up * 0.25f, yawRad);
+                vehicle.state.vx = 28.0f; // 100 km/h launch speed
+                vehicle.state.vy = 0.0f;
+                vehicle.state.yawRate = 0.0f;
+                if (vehicle.powertrain != null)
+                {
+                    vehicle.powertrain.currentGear = 2;
+                }
+            }
+
+            recoveryState = PilotRecoveryState.Racing;
+            stuckTimer = 0.0f;
+            consecutiveStuckCount = 0;
+            totalStuckRecoveryDuration = 0.0f;
         }
 
         private void ExecuteRecovery(float dt)
         {
             recoveryTimer -= dt;
+
+            // Fail-safe check
+            if (recoveryTimer <= -1.0f)
+            {
+                TriggerCenterlineTeleportRecovery();
+                return;
+            }
 
             if (recoveryState == PilotRecoveryState.Reversing)
             {
@@ -303,14 +346,14 @@ namespace F1Sim.AI
                     vehicle.powertrain.currentGear = -1;
                 }
 
-                // Steer opposite to wall obstacle
-                float reverseSteer = (centerlineError >= 0.0f) ? -0.85f : 0.85f;
-                vehicle.StepPhysics(0.65f, 0.0f, reverseSteer, dt);
+                // Steer opposite to wall obstacle with strong lock
+                float reverseSteer = (centerlineError >= 0.0f) ? -0.92f : 0.92f;
+                vehicle.StepPhysics(0.75f, 0.0f, reverseSteer, dt);
 
                 if (recoveryTimer <= 0.0f)
                 {
                     recoveryState = PilotRecoveryState.Turnaround;
-                    recoveryTimer = 0.9f;
+                    recoveryTimer = 1.0f;
                 }
             }
             else if (recoveryState == PilotRecoveryState.Turnaround)
@@ -321,13 +364,14 @@ namespace F1Sim.AI
                     vehicle.powertrain.currentGear = 1;
                 }
 
-                float turnSteer = (centerlineError >= 0.0f) ? 0.75f : -0.75f;
-                vehicle.StepPhysics(0.55f, 0.0f, turnSteer, dt);
+                float turnSteer = (centerlineError >= 0.0f) ? 0.90f : -0.90f;
+                vehicle.StepPhysics(0.70f, 0.0f, turnSteer, dt);
 
                 if (recoveryTimer <= 0.0f)
                 {
                     recoveryState = PilotRecoveryState.Racing;
                     stuckTimer = 0.0f;
+                    totalStuckRecoveryDuration = 0.0f;
                 }
             }
         }

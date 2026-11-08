@@ -29,6 +29,8 @@ namespace F1Sim.Cockpit
         public Transform leftShoulderAnchor;
         public Transform rightShoulderAnchor;
 
+        private float currentSmoothedSteerDeg = 0.0f;
+
         [Header("Halo Settings")]
         public float haloOpacity = 1.0f; // 1.0 -> 0.35 -> 0.15 -> 1.0
 
@@ -387,9 +389,11 @@ namespace F1Sim.Cockpit
             {
                 float steerRatio = vehicle.config.steerRatio;
                 float roadWheelAngleRad = vehicle.state.steeringAngle;
-                float wheelRotationDeg = Mathf.Clamp(roadWheelAngleRad * Mathf.Rad2Deg * steerRatio, -180.0f, 180.0f);
+                float targetWheelRotationDeg = Mathf.Clamp(roadWheelAngleRad * Mathf.Rad2Deg * steerRatio, -180.0f, 180.0f);
 
-                steeringWheelTransform.localRotation = Quaternion.Euler(0.0f, 0.0f, -wheelRotationDeg);
+                // Smooth exponential interpolation eliminating steering jitter/teleporting
+                currentSmoothedSteerDeg = Mathf.Lerp(currentSmoothedSteerDeg, targetWheelRotationDeg, Time.deltaTime * 16.0f);
+                steeringWheelTransform.localRotation = Quaternion.Euler(0.0f, 0.0f, -currentSmoothedSteerDeg);
             }
 
             UpdateDriverArmsKinematics();
@@ -415,9 +419,15 @@ namespace F1Sim.Cockpit
             float dist = dir.magnitude;
             if (dist < 0.01f) return;
 
-            arm.position = (p0 + p1) * 0.5f;
-            arm.rotation = Quaternion.LookRotation(dir.normalized, transform.up) * Quaternion.Euler(90.0f, 0.0f, 0.0f);
-            arm.localScale = new Vector3(0.072f, dist * 0.5f, 0.072f);
+            Vector3 targetPos = (p0 + p1) * 0.5f;
+            Quaternion targetRot = Quaternion.LookRotation(dir.normalized, transform.up) * Quaternion.Euler(90.0f, 0.0f, 0.0f);
+            Vector3 targetScale = new Vector3(0.072f, dist * 0.5f, 0.072f);
+
+            // Smooth interpolation for arms kinematics tracking
+            float t = Mathf.Clamp01(Time.deltaTime * 24.0f);
+            arm.position = Vector3.Lerp(arm.position, targetPos, t);
+            arm.rotation = Quaternion.Slerp(arm.rotation, targetRot, t);
+            arm.localScale = Vector3.Lerp(arm.localScale, targetScale, t);
         }
 
         public void CycleHaloOpacity()
