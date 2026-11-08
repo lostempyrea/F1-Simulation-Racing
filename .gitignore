@@ -1,0 +1,92 @@
+# ==============================================================================
+# F1 Simulation Racing - .gitignore
+# ==============================================================================
+
+# --- Project Specific ---
+.agents/
+graphify-out/
+Build/
+Builds/
+*.log
+*.lnk
+unity_build.log
+unity_verify.log
+unity_batch_check.log
+unity_create.log
+unity_test.log
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# --- Unity ---
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Asset meta files for directories that should not be tracked
+/[Aa]ssets/[Aa]ssetStoreTools*
+/[Aa]ssets/[Aa]ssetStoreTools.meta
+
+# Visual Studio / Rider / VS Code cache & generated files
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Unity profiler & crash logs
+sysinfo.txt
+*.stackdump
+crashlytics-build.properties
