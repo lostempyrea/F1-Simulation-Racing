@@ -24,7 +24,7 @@ namespace F1Sim.Cockpit
         [Header("Halo Settings")]
         public float haloOpacity = 1.0f; // 1.0 -> 0.35 -> 0.15 -> 1.0
 
-        private float columnRakeDeg = -16.0f;
+        private float columnRakeDeg = -12.0f;
         private Material haloMaterial;
         private List<Renderer> haloParts = new List<Renderer>();
 
@@ -42,13 +42,16 @@ namespace F1Sim.Cockpit
             if (old != null) Destroy(old.gameObject);
 
             // 1. Attach external front chassis, front wing, double-wishbone suspension & spinning 18" Pirelli wheels
-            F1CarModelBuilder carBuilder = GetComponent<F1CarModelBuilder>();
-            if (carBuilder == null) carBuilder = gameObject.AddComponent<F1CarModelBuilder>();
-            carBuilder.vehicle = vehicle;
-            carBuilder.primaryLivery = F1Palette.RacingRed;
-            carBuilder.accentLivery = F1Palette.ModenaYellow;
-            carBuilder.isPlayerCar = true;
-            carBuilder.BuildCarModel();
+            F1CarModelBuilder carBuilder = (vehicle != null) ? vehicle.GetComponent<F1CarModelBuilder>() : GetComponent<F1CarModelBuilder>();
+            if (carBuilder == null && vehicle != null) carBuilder = vehicle.gameObject.AddComponent<F1CarModelBuilder>();
+            if (carBuilder != null)
+            {
+                carBuilder.vehicle = vehicle;
+                carBuilder.primaryLivery = F1Palette.RacingRed;
+                carBuilder.accentLivery = F1Palette.ModenaYellow;
+                carBuilder.isPlayerCar = true;
+                carBuilder.BuildCarModel();
+            }
 
             // 2. Root container for detailed first-person cockpit interior
             GameObject cockpitRoot = new GameObject("Cockpit_Interior");
@@ -81,11 +84,11 @@ namespace F1Sim.Cockpit
             CreateCockpitPart(PrimitiveType.Cube, "Cockpit_Rim_Right", cockpitRoot.transform,
                 new Vector3(0.33f, 0.50f, 0.22f), new Vector3(4.0f, -5.0f, 0.0f), new Vector3(0.065f, 0.045f, 0.82f), redLiveryMat);
 
-            // Curved Dashboard Cowl & Windscreen Aero Lip
+            // Curved Dashboard Cowl & Windscreen Aero Lip (lowered so steering wheel LCD and forward sightline are 100% unobstructed)
             CreateCockpitPart(PrimitiveType.Cylinder, "Dashboard_GlareShield", cockpitRoot.transform,
-                new Vector3(0.0f, 0.43f, 0.34f), new Vector3(84.0f, 0.0f, 0.0f), new Vector3(0.58f, 0.24f, 0.18f), alcantaraMat);
+                new Vector3(0.0f, 0.36f, 0.38f), new Vector3(84.0f, 0.0f, 0.0f), new Vector3(0.48f, 0.12f, 0.12f), alcantaraMat);
             CreateCockpitPart(PrimitiveType.Cube, "Aero_Windscreen_Deflector", cockpitRoot.transform,
-                new Vector3(0.0f, 0.535f, 0.48f), new Vector3(-28.0f, 0.0f, 0.0f), new Vector3(0.42f, 0.04f, 0.015f), carbonMat);
+                new Vector3(0.0f, 0.46f, 0.56f), new Vector3(-28.0f, 0.0f, 0.0f), new Vector3(0.32f, 0.02f, 0.01f), carbonMat);
 
             // Nose Pitot Tube & High-Speed Camera Pods
             CreateCockpitPart(PrimitiveType.Cylinder, "Aero_Pitot_Tube", cockpitRoot.transform,
@@ -96,9 +99,9 @@ namespace F1Sim.Cockpit
             haloObj.transform.SetParent(cockpitRoot.transform, false);
             haloParts.Clear();
 
-            // Slender Aerodynamic Center Pillar (angled forward away from driver eye)
-            GameObject centerPillar = CreateCockpitPart(PrimitiveType.Cylinder, "Halo_Center_Pillar", haloObj.transform,
-                new Vector3(0.0f, 0.64f, 0.42f), new Vector3(24.0f, 0.0f, 0.0f), new Vector3(0.022f, 0.195f, 0.034f), haloMaterial);
+            // Slender Aerodynamic Center Pillar (thin blade-like aero profile placed above the steering wheel)
+            GameObject centerPillar = CreateCockpitPart(PrimitiveType.Cube, "Halo_Center_Pillar", haloObj.transform,
+                new Vector3(0.0f, 0.68f, 0.40f), new Vector3(20.0f, 0.0f, 0.0f), new Vector3(0.016f, 0.22f, 0.032f), haloMaterial);
             haloParts.Add(centerPillar.GetComponent<Renderer>());
             haloRenderer = centerPillar.GetComponent<Renderer>();
 
@@ -131,10 +134,10 @@ namespace F1Sim.Cockpit
                 haloParts.Add(archSeg.GetComponent<Renderer>());
             }
 
-            // 5. High-Craft F1 Butterfly Steering Wheel (Positioned in clear lower view of driver eye at Y=0.68, Z=-0.25)
+            // 5. High-Craft F1 Butterfly Steering Wheel (Cleanly positioned in lower view at Y=0.42, Z=0.24)
             GameObject wheelColumn = new GameObject("SteeringWheel_Column");
             wheelColumn.transform.SetParent(cockpitRoot.transform, false);
-            wheelColumn.transform.localPosition = new Vector3(0.0f, 0.50f, 0.14f);
+            wheelColumn.transform.localPosition = new Vector3(0.0f, 0.42f, 0.24f);
             wheelColumn.transform.localRotation = Quaternion.Euler(columnRakeDeg, 0.0f, 0.0f);
 
             // Steering Column Shaft

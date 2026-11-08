@@ -27,47 +27,105 @@ namespace F1Sim.Track
             float length = spline.Length;
             int numSteps = Mathf.Max(40, Mathf.RoundToInt(length / stepSize));
 
-            List<Vector3> vertices = new List<Vector3>(numSteps * 4);
-            List<Vector3> normals = new List<Vector3>(numSteps * 4);
-            List<Vector2> uvs = new List<Vector2>(numSteps * 4);
-            List<int> triangles = new List<int>(numSteps * 18);
+            // 3D Solid Road Slab Extrusion (thickness = 0.40m):
+            // 12 vertices per ring: 4 top, 4 underbelly, 2 left skirt, 2 right skirt
+            float roadThickness = 0.40f;
+            List<Vector3> vertices = new List<Vector3>(numSteps * 12);
+            List<Vector3> normals = new List<Vector3>(numSteps * 12);
+            List<Vector2> uvs = new List<Vector2>(numSteps * 12);
+            List<int> triangles = new List<int>(numSteps * 48);
 
             float halfWidth = MonzaTrackData.TrackWidth * 0.5f;
 
             for (int i = 0; i < numSteps; i++)
             {
                 float s = (i / (float)numSteps) * length;
-                Vector3 center = spline.GetPoint(s) + new Vector3(0.0f, 0.01f, 0.0f);
+                Vector3 center = spline.GetPoint(s);
                 spline.GetFrenetFrame(s, out Vector3 tan, out Vector3 lat, out Vector3 norm);
 
-                Vector3 pL  = center - lat * halfWidth;
-                Vector3 pLL = center - lat * (halfWidth - 0.35f);
-                Vector3 pRR = center + lat * (halfWidth - 0.35f);
-                Vector3 pR  = center + lat * halfWidth;
+                // Top surface points (slight offset Y+0.01m)
+                Vector3 centerTop = center + norm * 0.01f;
+                Vector3 pL_top  = centerTop - lat * halfWidth;
+                Vector3 pLL_top = centerTop - lat * (halfWidth - 0.35f);
+                Vector3 pRR_top = centerTop + lat * (halfWidth - 0.35f);
+                Vector3 pR_top  = centerTop + lat * halfWidth;
+
+                // Underbelly points (offset -0.40m)
+                Vector3 centerBot = center - norm * (roadThickness - 0.01f);
+                Vector3 pL_bot  = centerBot - lat * halfWidth;
+                Vector3 pLL_bot = centerBot - lat * (halfWidth - 0.35f);
+                Vector3 pRR_bot = centerBot + lat * (halfWidth - 0.35f);
+                Vector3 pR_bot  = centerBot + lat * halfWidth;
 
                 float vCoord = s * 0.12f;
 
-                vertices.Add(pL);  normals.Add(norm); uvs.Add(new Vector2(0.0f,  vCoord));
-                vertices.Add(pLL); normals.Add(norm); uvs.Add(new Vector2(0.06f, vCoord));
-                vertices.Add(pRR); normals.Add(norm); uvs.Add(new Vector2(0.94f, vCoord));
-                vertices.Add(pR);  normals.Add(norm); uvs.Add(new Vector2(1.0f,  vCoord));
+                // 1) Top surface vertices (indices 0..3)
+                vertices.Add(pL_top);  normals.Add(norm); uvs.Add(new Vector2(0.0f,  vCoord));
+                vertices.Add(pLL_top); normals.Add(norm); uvs.Add(new Vector2(0.06f, vCoord));
+                vertices.Add(pRR_top); normals.Add(norm); uvs.Add(new Vector2(0.94f, vCoord));
+                vertices.Add(pR_top);  normals.Add(norm); uvs.Add(new Vector2(1.0f,  vCoord));
+
+                // 2) Underbelly vertices (indices 4..7)
+                vertices.Add(pL_bot);  normals.Add(-norm); uvs.Add(new Vector2(0.0f,  vCoord));
+                vertices.Add(pLL_bot); normals.Add(-norm); uvs.Add(new Vector2(0.06f, vCoord));
+                vertices.Add(pRR_bot); normals.Add(-norm); uvs.Add(new Vector2(0.94f, vCoord));
+                vertices.Add(pR_bot);  normals.Add(-norm); uvs.Add(new Vector2(1.0f,  vCoord));
+
+                // 3) Left skirt vertices (indices 8..9)
+                vertices.Add(pL_top); normals.Add(-lat); uvs.Add(new Vector2(0.0f,  vCoord));
+                vertices.Add(pL_bot); normals.Add(-lat); uvs.Add(new Vector2(0.08f, vCoord));
+
+                // 4) Right skirt vertices (indices 10..11)
+                vertices.Add(pR_top); normals.Add(lat);  uvs.Add(new Vector2(0.92f, vCoord));
+                vertices.Add(pR_bot); normals.Add(lat);  uvs.Add(new Vector2(1.0f,  vCoord));
             }
 
             for (int i = 0; i < numSteps; i++)
             {
-                int curr = i * 4;
-                int next = ((i + 1) % numSteps) * 4;
+                int baseCurr = i * 12;
+                int baseNext = ((i + 1) % numSteps) * 12;
 
+                // 1) Top surface quads (normal facing up)
                 for (int j = 0; j < 3; j++)
                 {
-                    int p00 = curr + j;
-                    int p01 = curr + j + 1;
-                    int p10 = next + j;
-                    int p11 = next + j + 1;
+                    int p00 = baseCurr + j;
+                    int p01 = baseCurr + j + 1;
+                    int p10 = baseNext + j;
+                    int p11 = baseNext + j + 1;
 
                     triangles.Add(p00); triangles.Add(p10); triangles.Add(p01);
                     triangles.Add(p01); triangles.Add(p10); triangles.Add(p11);
                 }
+
+                // 2) Underbelly quads (normal facing down, reversed winding)
+                for (int j = 0; j < 3; j++)
+                {
+                    int b00 = baseCurr + 4 + j;
+                    int b01 = baseCurr + 4 + j + 1;
+                    int b10 = baseNext + 4 + j;
+                    int b11 = baseNext + 4 + j + 1;
+
+                    triangles.Add(b00); triangles.Add(b01); triangles.Add(b10);
+                    triangles.Add(b01); triangles.Add(b11); triangles.Add(b10);
+                }
+
+                // 3) Left Skirt quad (normal facing left -lat)
+                int s00 = baseCurr + 8;
+                int s01 = baseCurr + 9;
+                int s10 = baseNext + 8;
+                int s11 = baseNext + 9;
+
+                triangles.Add(s00); triangles.Add(s01); triangles.Add(s10);
+                triangles.Add(s01); triangles.Add(s11); triangles.Add(s10);
+
+                // 4) Right Skirt quad (normal facing right +lat)
+                int r00 = baseCurr + 10;
+                int r01 = baseCurr + 11;
+                int r10 = baseNext + 10;
+                int r11 = baseNext + 11;
+
+                triangles.Add(r00); triangles.Add(r10); triangles.Add(r01);
+                triangles.Add(r01); triangles.Add(r10); triangles.Add(r11);
             }
 
             Mesh mesh = new Mesh { name = "MonzaTrackRibbonMesh" };

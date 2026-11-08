@@ -2,12 +2,13 @@
 # F1 Simulation Racing - .gitignore
 # ==============================================================================
 
-# --- Project Specific ---
-.agents/
+# --- Project Specific & Standalone Builds ---
 graphify-out/
 Build/
 Builds/
 installer/
+dist/
+build/
 *.log
 *.lnk
 unity_build.log
@@ -16,15 +17,31 @@ unity_batch_check.log
 unity_create.log
 unity_test.log
 
+# Agent state management (track PROJECT_STATE.md, ignore teamwork logs)
+.agents/*
+!.agents/PROJECT_STATE.md
+
+# Temporary test scripts
+check_geometry.py
+inspect_barriers.py
+inspect_monza.py
+
+# Large binary 3D assets (>100MB exceeds GitHub hard push limits)
+*.fbx
+*.fbx.meta
+UnityF1/Assets/Models/**/source/
+
+# Executables & native binaries
+*.exe
+*.dll
+
 # --- Python ---
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -63,6 +80,13 @@ htmlcov/
 [Uu]ser[Ss]ettings/
 [Mm]emoryCaptures/
 [Rr]ecordings/
+UnityF1/[Ll]ibrary/
+UnityF1/[Tt]emp/
+UnityF1/[Oo]bj/
+UnityF1/[Bb]uild/
+UnityF1/[Bb]uilds/
+UnityF1/[Ll]ogs/
+UnityF1/[Uu]ser[Ss]ettings/
 
 # Asset meta files for directories that should not be tracked
 /[Aa]ssets/[Aa]ssetStoreTools*

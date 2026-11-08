@@ -73,6 +73,7 @@ namespace F1Sim.Physics
         public float LongitudinalG => state.ax / 9.80665f;
         public float LateralG => state.ay / 9.80665f;
         public float KerbVibration { get; set; } = 0.0f;
+        public System.Action<float> OnImpact;
 
         private void Awake()
         {
@@ -126,7 +127,7 @@ namespace F1Sim.Physics
             float engineDriveTorque = 0.0f;
             if (powertrain != null)
             {
-                powertrain.Step(state.throttle, state.vx, dt);
+                powertrain.Step(state.throttle, state.vx, dt, state.brake);
                 state.rpm = powertrain.Rpm;
                 state.gear = powertrain.CurrentGear;
                 engineDriveTorque = powertrain.GetRearAxleTorque();
@@ -182,12 +183,25 @@ namespace F1Sim.Physics
                 else
                 {
                     fBrakeAct[i] = 0.0f;
-                    if (i >= 2 && state.throttle > 0.01f && state.gear > 0) // Rear wheel drive
+                    if (i >= 2 && state.throttle > 0.01f && state.gear != 0) // Rear wheel drive (Forward or Reverse)
                     {
                         float fDriveDemand = (engineDriveTorque * 0.5f) / config.tyreRadius;
-                        fDriveAct[i] = Mathf.Min(fDriveDemand, maxGrip * 0.98f);
-                        float driveSlip = Mathf.Clamp(0.04f + 0.12f * state.throttle, 0.0f, 0.35f);
-                        state.wheelOmega[i] = (Mathf.Max(0.2f, vxCg) * (1.0f + driveSlip)) / config.tyreRadius;
+                        if (state.gear < 0)
+                        {
+                            // Reverse drive: negative force
+                            fDriveAct[i] = Mathf.Max(fDriveDemand, -maxGrip * 0.98f);
+                            float rearSlipMag = Mathf.Clamp01(Mathf.Abs(fDriveDemand) / Mathf.Max(1.0f, maxGrip)) * 0.15f;
+                            state.wheelOmega[i] = (Mathf.Min(-0.2f, vxCg) * (1.0f + rearSlipMag)) / config.tyreRadius;
+                        }
+                        else
+                        {
+                            fDriveAct[i] = Mathf.Min(fDriveDemand, maxGrip * 0.98f);
+                            float fDemandMag = Mathf.Abs(fDriveDemand);
+                            float rearSlipMag = (fDemandMag <= maxGrip)
+                                ? 0.05f * (fDemandMag / Mathf.Max(1.0f, maxGrip))
+                                : Mathf.Min(0.30f, 0.05f + 0.20f * ((fDemandMag - maxGrip) / Mathf.Max(1.0f, maxGrip)));
+                            state.wheelOmega[i] = (Mathf.Max(0.2f, vxCg) * (1.0f + rearSlipMag)) / config.tyreRadius;
+                        }
                     }
                     else
                     {
@@ -210,11 +224,11 @@ namespace F1Sim.Physics
             {
                 float fz = normalLoads[i];
                 float muLat = ComputePacejkaMu(fz, true) * surfaceMu[i];
-                float fyPure = muLat * fz * Mathf.Sin(1.65f * Mathf.Atan(10.5f * slipAngles[i]));
+                float fyPure = muLat * fz * Mathf.Sin(1.65f * Mathf.Atan(14.5f * slipAngles[i]));
 
-                // Friction Ellipse Coupling
-                float kappaNorm = Mathf.Clamp01(Mathf.Abs(slipRatios[i]) / 0.15f);
-                float ellScale = Mathf.Sqrt(Mathf.Max(0.01f, 1.0f - kappaNorm * kappaNorm * 0.85f));
+                // Friction Ellipse Coupling: prevent excessive lateral grip collapse under normal throttle
+                float kappaNorm = Mathf.Clamp01(Mathf.Abs(slipRatios[i]) / 0.18f);
+                float ellScale = Mathf.Sqrt(Mathf.Max(0.20f, 1.0f - kappaNorm * kappaNorm * 0.70f));
                 float fyCombined = fyPure * ellScale * kBlend;
 
                 float delta = steerAngles[i];
@@ -223,9 +237,14 @@ namespace F1Sim.Physics
 
                 float fxWheel = 0.0f;
                 if (state.brake > 0.01f)
-                    fxWheel = -Mathf.Sign(vxCg) * fBrakeAct[i];
+                {
+                    float signMotion = (Mathf.Abs(vxCg) > 0.05f) ? Mathf.Sign(vxCg) : 1.0f;
+                    fxWheel = -signMotion * fBrakeAct[i];
+                }
                 else if (i >= 2)
+                {
                     fxWheel = fDriveAct[i];
+                }
 
                 float fxBody = fxWheel * cosD - fyCombined * sinD;
                 float fyBody = fxWheel * sinD + fyCombined * cosD;
@@ -239,8 +258,9 @@ namespace F1Sim.Physics
             }
 
             // 7. Equations of Motion (Non-Inertial Body Frame)
-            float dragForce = -Mathf.Sign(vxCg) * dragTotal;
-            float rollResist = -Mathf.Sign(vxCg) * (0.015f * config.mass * 9.81f);
+            float signVx = (Mathf.Abs(vxCg) > 0.05f) ? Mathf.Sign(vxCg) : 0.0f;
+            float dragForce = -signVx * dragTotal;
+            float rollResist = -signVx * (0.015f * config.mass * 9.81f);
 
             float fxNet = fxBodyTotal + dragForce + rollResist;
             float fyNet = fyBodyTotal;
@@ -265,12 +285,13 @@ namespace F1Sim.Physics
             }
             else
             {
-                state.vx = Mathf.Max(0.0f, vxNext);
+                state.vx = Mathf.Clamp(vxNext, -18.0f, 105.0f);
                 state.vy += dvy;
+                state.vy *= Mathf.Clamp01(1.0f - 8.0f * dt); // Natural high-grip tyre scrub damping
                 state.yawRate += dyawRate;
             }
 
-            // 8. Integration into 3D Cartesian World Coordinates
+            // 8. Integration & Solid Barrier Collision Detection
             float cosPsi = Mathf.Cos(state.yawAngle);
             float sinPsi = Mathf.Sin(state.yawAngle);
 
@@ -280,7 +301,103 @@ namespace F1Sim.Physics
                 state.vx * sinPsi + state.vy * cosPsi
             );
 
-            state.worldPosition += worldVelocity * dt;
+            Vector3 moveDelta = worldVelocity * dt;
+            float moveDist = moveDelta.magnitude;
+            bool hitObstacle = false;
+            Vector3 hitNormal = Vector3.zero;
+
+            Vector3 halfExtents = new Vector3(0.92f, 0.35f, 2.30f);
+            Quaternion carRot = Quaternion.Euler(0.0f, -state.yawAngle * Mathf.Rad2Deg + 90.0f, 0.0f);
+            Vector3 testPos = state.worldPosition + new Vector3(0.0f, 0.55f, 0.0f);
+
+            if (moveDist > 0.001f)
+            {
+                Vector3 moveDir = moveDelta / moveDist;
+                RaycastHit[] hits = UnityEngine.Physics.BoxCastAll(testPos, halfExtents, moveDir, carRot, moveDist + 0.15f);
+                for (int hIdx = 0; hIdx < hits.Length; hIdx++)
+                {
+                    RaycastHit h = hits[hIdx];
+                    if (h.collider != null && h.collider.transform != transform && !h.collider.transform.IsChildOf(transform))
+                    {
+                        string cName = h.collider.name;
+                        bool isTrackOrGround = cName.Contains("Track_Mesh") || cName.Contains("TrackKerb") ||
+                                              cName.Contains("Start_Finish") || cName.Contains("Ground") ||
+                                              cName.Contains("Gravel");
+                        bool isObstacle = (cName.Contains("Barrier") || cName.Contains("Stand_Backwall") ||
+                                          cName.Contains("Overpass_Pillar") || cName.Contains("Guardrail") ||
+                                          cName.Contains("Pit_Garage") || cName.Contains("Rail_") ||
+                                          cName.Contains("Tecpro")) && !isTrackOrGround;
+                        if (isObstacle)
+                        {
+                            hitObstacle = true;
+                            hitNormal = h.normal;
+                            hitNormal.y = 0.0f;
+                            if (hitNormal.sqrMagnitude > 0.01f) hitNormal.Normalize();
+                            else hitNormal = -moveDir;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!hitObstacle)
+            {
+                Collider[] overlaps = UnityEngine.Physics.OverlapBox(testPos + moveDelta, halfExtents, carRot);
+                for (int oIdx = 0; oIdx < overlaps.Length; oIdx++)
+                {
+                    Collider col = overlaps[oIdx];
+                    if (col != null && col.transform != transform && !col.transform.IsChildOf(transform))
+                    {
+                        string cName = col.name;
+                        bool isTrackOrGround = cName.Contains("Track_Mesh") || cName.Contains("TrackKerb") ||
+                                              cName.Contains("Start_Finish") || cName.Contains("Ground") ||
+                                              cName.Contains("Gravel");
+                        bool isObstacle = (cName.Contains("Barrier") || cName.Contains("Stand_Backwall") ||
+                                          cName.Contains("Overpass_Pillar") || cName.Contains("Guardrail") ||
+                                          cName.Contains("Pit_Garage") || cName.Contains("Rail_") ||
+                                          cName.Contains("Tecpro")) && !isTrackOrGround;
+                        if (isObstacle)
+                        {
+                            Vector3 closest = col.ClosestPoint(testPos);
+                            Vector3 pushDir = testPos - closest;
+                            pushDir.y = 0.0f;
+                            if (pushDir.sqrMagnitude > 0.0001f)
+                            {
+                                hitObstacle = true;
+                                hitNormal = pushDir.normalized;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (hitObstacle)
+            {
+                // Prevent penetrating through barrier: slide along contact plane
+                Vector3 slideMove = moveDelta - Vector3.Dot(moveDelta, hitNormal) * hitNormal;
+                state.worldPosition += slideMove + hitNormal * 0.04f;
+
+                float speedNorm = worldVelocity.magnitude;
+                float impactDot = (speedNorm > 0.1f) ? Mathf.Abs(Vector3.Dot(worldVelocity / speedNorm, hitNormal)) : 0.0f;
+
+                // Reduce forward speed based on impact angle
+                state.vx *= Mathf.Clamp01(1.0f - 0.50f * impactDot);
+                state.vy = -state.vy * 0.25f; // Restitution & slide damping
+
+                // Deflect yaw glance off the barrier with strong rotational stabilization (prevent helicopter spin)
+                Vector3 localNormal = Quaternion.Inverse(carRot) * hitNormal;
+                state.yawRate *= Mathf.Clamp01(1.0f - 22.0f * dt);
+                float glanceTorque = Mathf.Sign(localNormal.x) * Mathf.Min(1.5f, 0.35f * (speedNorm / 20.0f) * impactDot);
+                state.yawRate = Mathf.Clamp(state.yawRate * 0.3f + glanceTorque, -3.0f, 3.0f);
+
+                OnImpact?.Invoke(Mathf.Clamp01(impactDot * (state.vx / 35.0f)));
+            }
+            else
+            {
+                state.worldPosition += moveDelta;
+            }
+
             state.yawAngle = Mathf.Repeat(state.yawAngle + state.yawRate * dt + Mathf.PI, Mathf.PI * 2.0f) - Mathf.PI;
 
             // Update transform
@@ -318,7 +435,7 @@ namespace F1Sim.Physics
 
         private float ComputePacejkaMu(float fz, bool isLateral)
         {
-            float mu0 = isLateral ? 1.75f : 2.15f;
+            float mu0 = isLateral ? 2.10f : 2.15f;
             float fz0 = 4000.0f; // Reference load (N)
             float loadSensitivity = 0.08f;
             return mu0 * (1.0f - loadSensitivity * ((fz - fz0) / fz0));

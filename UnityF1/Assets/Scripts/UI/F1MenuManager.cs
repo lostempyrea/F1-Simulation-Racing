@@ -5,6 +5,8 @@ using UnityEngine.UI;
 using F1Sim.Core;
 using F1Sim.Physics;
 using F1Sim.Cockpit;
+using F1Sim.Track;
+using F1Sim.Audio;
 
 namespace F1Sim.UI
 {
@@ -15,6 +17,12 @@ namespace F1Sim.UI
         Racing,
         Paused,
         Results
+    }
+
+    public enum MinimapMode
+    {
+        NorthUp,
+        HeadingUp
     }
 
     [Serializable]
@@ -40,6 +48,7 @@ namespace F1Sim.UI
         [Header("Runtime State")]
         public GameState CurrentState { get; private set; } = GameState.MainMenu;
         public TransmissionMode CurrentTransmission { get; set; } = TransmissionMode.Automatic;
+        public MinimapMode CurrentMinimapMode { get; set; } = MinimapMode.HeadingUp;
         public float SteeringSensitivity { get; set; } = 1.0f;
         public string GraphicsPreset { get; set; } = "ULTRA";
 
@@ -65,9 +74,47 @@ namespace F1Sim.UI
         private string hudCameraLabel = "COCKPIT";
         private List<DriverStandingEntry> hudStandings = new List<DriverStandingEntry>();
 
+        // 2D Circuit Radar Minimap
+        private Vector3 hudPlayerPos;
+        private float hudPlayerYaw;
+        private List<Vector3> hudAiPositions = new List<Vector3>();
+        private List<Color> hudAiColors = new List<Color>();
+        private Vector2[] minimapTrackPoints = null;
+        private bool[] minimapDrsZones = null;
+        private const float MapMinX = -210.0f;
+        private const float MapMaxX = 310.0f;
+        private const float MapMinZ = -120.0f;
+        private const float MapMaxZ = 3580.0f;
+
         private string resultsWinner = "PLAYER";
         private string resultsFastestLap = "1:21.046 (PLY)";
         private string resultsClassification = "1. PLY  WINNER\n2. VER  +0.420s\n3. LEC  +1.850s\n4. NOR  +2.310s\n5. HAM  +3.120s\n6. ALO  +4.250s";
+
+        // Audio Settings Cache
+        private F1AudioSynthesizer cachedAudioSynth;
+        private float audioMasterVolume = 0.80f;
+        private float audioEngineVolume = 0.85f;
+        private float audioSfxVolume = 0.85f;
+        private bool audioIsMuted = false;
+
+        // Respawn Banner Notification
+        private float respawnBannerTimer = 0.0f;
+        private string respawnBannerText = "";
+
+        public void ShowRespawnBanner(string message, float duration = 2.5f)
+        {
+            respawnBannerText = message;
+            respawnBannerTimer = duration;
+        }
+
+        private F1AudioSynthesizer GetAudioSynthesizer()
+        {
+            if (cachedAudioSynth == null)
+            {
+                cachedAudioSynth = UnityEngine.Object.FindFirstObjectByType<F1AudioSynthesizer>();
+            }
+            return cachedAudioSynth;
+        }
 
         // Procedural UI Textures & Styles
         private Texture2D texObsidianPanel;
@@ -148,7 +195,9 @@ namespace F1Sim.UI
             int totalLaps,
             float lapTimeSec,
             string cameraModeName,
-            List<DriverStandingEntry> liveStandings = null)
+            List<DriverStandingEntry> liveStandings = null,
+            List<Vector3> aiPositions = null,
+            List<Color> aiColors = null)
         {
             if (player != null)
             {
@@ -161,12 +210,16 @@ namespace F1Sim.UI
                 hudDrsAvailable = player.state.drsAvailable;
                 hudLongG = player.LongitudinalG;
                 hudLatG = player.LateralG;
+                hudPlayerPos = player.state.worldPosition;
+                hudPlayerYaw = player.state.yawAngle;
             }
             hudCurrentLap = currentLap;
             hudTotalLaps = totalLaps;
             hudLapTimeSec = lapTimeSec;
             if (!string.IsNullOrEmpty(cameraModeName)) hudCameraLabel = cameraModeName;
             if (liveStandings != null && liveStandings.Count > 0) hudStandings = liveStandings;
+            if (aiPositions != null) hudAiPositions = aiPositions;
+            if (aiColors != null) hudAiColors = aiColors;
         }
 
         public void UpdateHUD(float speedKmh, int gear, float lapTimeSec, string timingTowerStr)
@@ -328,10 +381,17 @@ namespace F1Sim.UI
         private void DrawStyledPanel(Rect rect, bool leftRedStripe = true, bool topRedStripe = false)
         {
             GUI.DrawTexture(rect, texObsidianPanel);
+
+            // Subtle 1px glassmorphism border (#1a202c / #10151f)
+            DrawSolidRect(new Rect(rect.x, rect.y, rect.width, 1.0f), new Color(0.24f, 0.28f, 0.36f, 0.45f));
+            DrawSolidRect(new Rect(rect.x, rect.yMax - 1.0f, rect.width, 1.0f), new Color(0.12f, 0.14f, 0.18f, 0.55f));
+            DrawSolidRect(new Rect(rect.x, rect.y, 1.0f, rect.height), new Color(0.24f, 0.28f, 0.36f, 0.45f));
+            DrawSolidRect(new Rect(rect.xMax - 1.0f, rect.y, 1.0f, rect.height), new Color(0.12f, 0.14f, 0.18f, 0.55f));
+
             if (leftRedStripe)
-                GUI.DrawTexture(new Rect(rect.x, rect.y, 5.0f, rect.height), texCrimsonAccent);
+                GUI.DrawTexture(new Rect(rect.x, rect.y, 4.0f, rect.height), texCrimsonAccent);
             if (topRedStripe)
-                GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, 4.0f), texCrimsonAccent);
+                GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, 3.0f), texCrimsonAccent);
         }
 
         private void DrawSolidRect(Rect rect, Color col)
@@ -444,7 +504,7 @@ namespace F1Sim.UI
             GUILayout.Label("• [W / S] : Đạp Ga (1000 HP Hybrid) / Phanh Carbon (4.5G)", styleBodyText);
             GUILayout.Label("• [A / D] : Đánh lái tự do (Đã tắt hoàn toàn tự cua góc)", styleBodyText);
             GUILayout.Label("• [E / Q] : Tăng số / Giảm số (Khi chọn Số Sàn - Manual)", styleBodyText);
-            GUILayout.Label("• [T] Đổi Auto/Manual   • [F] Mở DRS   • [C] Camera   • [H] Halo", styleMutedText);
+            GUILayout.Label("• [T] Đổi Auto/Manual   • [F] Mở DRS   • [R] Đặt lại xe khi kẹt   • [C] Camera   • [H] Halo", styleMutedText);
 
             GUILayout.EndArea();
 
@@ -457,71 +517,71 @@ namespace F1Sim.UI
 
         private void DrawSettings(float w, float h)
         {
-            float panelW = 540.0f;
-            float panelH = 490.0f;
+            float panelW = 560.0f;
+            float panelH = 710.0f;
             Rect modal = new Rect((w - panelW) * 0.5f, (h - panelH) * 0.5f, panelW, panelH);
             DrawStyledPanel(modal, leftRedStripe: false, topRedStripe: true);
 
-            GUILayout.BeginArea(new Rect(modal.x + 28, modal.y + 24, modal.width - 56, modal.height - 44));
+            GUILayout.BeginArea(new Rect(modal.x + 28, modal.y + 18, modal.width - 56, modal.height - 32));
             GUILayout.Label("CÀI ĐẶT XE & ĐỒ HỌA (VEHICLE & GRAPHICS SETTINGS)", styleBrandTitle);
-            GUILayout.Label("TÙY CHỈNH HỘP SỐ, ĐỘ NHẠY LÁI VÀ HIỆU NĂNG URP", styleSubHeader);
-            GUILayout.Space(18);
+            GUILayout.Label("TÙY CHỈNH HỘP SỐ, ĐỘ NHẠY LÁI, ĐỒ HỌA VÀ ÂM THANH", styleSubHeader);
+            GUILayout.Space(12);
 
             // 1. Transmission Mode
             GUILayout.Label("1. CHẾ ĐỘ HỘP SỐ (TRANSMISSION):", styleSectionLabel);
             GUILayout.BeginHorizontal();
             bool isAuto = (CurrentTransmission == TransmissionMode.Automatic);
-            if (GUILayout.Button(isAuto ? "● AUTOMATIC (TỰ ĐỘNG)" : "○ AUTOMATIC (TỰ ĐỘNG)", isAuto ? styleActivePillBtn : styleSecondaryBtn, GUILayout.Height(40)))
+            if (GUILayout.Button(isAuto ? "● AUTOMATIC (TỰ ĐỘNG)" : "○ AUTOMATIC (TỰ ĐỘNG)", isAuto ? styleActivePillBtn : styleSecondaryBtn, GUILayout.Height(34)))
             {
                 CurrentTransmission = TransmissionMode.Automatic;
                 OnTransmissionChanged?.Invoke(CurrentTransmission);
             }
-            if (GUILayout.Button(!isAuto ? "● MANUAL (SỐ SÀN - E/Q)" : "○ MANUAL (SỐ SÀN - E/Q)", !isAuto ? styleActivePillBtn : styleSecondaryBtn, GUILayout.Height(40)))
+            if (GUILayout.Button(!isAuto ? "● MANUAL (SỐ SÀN - E/Q)" : "○ MANUAL (SỐ SÀN - E/Q)", !isAuto ? styleActivePillBtn : styleSecondaryBtn, GUILayout.Height(34)))
             {
                 CurrentTransmission = TransmissionMode.Manual;
                 OnTransmissionChanged?.Invoke(CurrentTransmission);
             }
             GUILayout.EndHorizontal();
 
-            GUILayout.Space(16);
+            GUILayout.Space(10);
 
             // 2. Steering Sensitivity
             GUILayout.Label($"2. ĐỘ NHẠY VÔ LĂNG (STEERING SENSITIVITY): {SteeringSensitivity:F2}x", styleSectionLabel);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("- 0.1", styleSecondaryBtn, GUILayout.Width(64), GUILayout.Height(32)))
+            if (GUILayout.Button("- 0.1", styleSecondaryBtn, GUILayout.Width(64), GUILayout.Height(28)))
             {
                 SteeringSensitivity = Mathf.Clamp(SteeringSensitivity - 0.1f, 0.4f, 2.0f);
                 OnSensitivityChanged?.Invoke(SteeringSensitivity);
             }
-            float sliderVal = GUILayout.HorizontalSlider(SteeringSensitivity, 0.4f, 2.0f, GUILayout.Height(32));
+            float sliderVal = GUILayout.HorizontalSlider(SteeringSensitivity, 0.4f, 2.0f, GUILayout.Height(28));
             if (Mathf.Abs(sliderVal - SteeringSensitivity) > 0.005f)
             {
                 SteeringSensitivity = sliderVal;
                 OnSensitivityChanged?.Invoke(SteeringSensitivity);
             }
-            if (GUILayout.Button("+ 0.1", styleSecondaryBtn, GUILayout.Width(64), GUILayout.Height(32)))
+            if (GUILayout.Button("+ 0.1", styleSecondaryBtn, GUILayout.Width(64), GUILayout.Height(28)))
             {
                 SteeringSensitivity = Mathf.Clamp(SteeringSensitivity + 0.1f, 0.4f, 2.0f);
                 OnSensitivityChanged?.Invoke(SteeringSensitivity);
             }
             GUILayout.EndHorizontal();
 
-            GUILayout.Space(16);
+            GUILayout.Space(10);
 
             // 3. Halo Opacity & Camera
             GUILayout.Label("3. TÙY CHỈNH BUỒNG LÁI & GÓC NHÌN:", styleSectionLabel);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("ĐỔI ĐỘ TRONG SUỐT HALO [H]", styleSecondaryBtn, GUILayout.Height(36)))
+            if (GUILayout.Button("ĐỔI ĐỘ TRONG SUỐT HALO [H]", styleSecondaryBtn, GUILayout.Height(30)))
             {
                 OnHaloCycleRequested?.Invoke();
             }
-            if (GUILayout.Button($"GÓC NHÌN: {hudCameraLabel} [C]", styleSecondaryBtn, GUILayout.Height(36)))
+            if (GUILayout.Button($"GÓC NHÌN: {hudCameraLabel} [C]", styleSecondaryBtn, GUILayout.Height(30)))
             {
                 OnCameraCycleRequested?.Invoke();
             }
             GUILayout.EndHorizontal();
 
-            GUILayout.Space(16);
+            GUILayout.Space(10);
 
             // 4. Graphics Quality Preset
             GUILayout.Label($"4. CHẤT LƯỢNG ĐỒ HỌA URP (CURRENT: {GraphicsPreset}):", styleSectionLabel);
@@ -531,7 +591,7 @@ namespace F1Sim.UI
             for (int i = 0; i < presets.Length; i++)
             {
                 bool active = (GraphicsPreset == presets[i]);
-                if (GUILayout.Button(presets[i], active ? styleActivePillBtn : styleSecondaryBtn, GUILayout.Height(34)))
+                if (GUILayout.Button(presets[i], active ? styleActivePillBtn : styleSecondaryBtn, GUILayout.Height(28)))
                 {
                     GraphicsPreset = presets[i];
                     QualitySettings.SetQualityLevel(qLevels[i]);
@@ -539,9 +599,80 @@ namespace F1Sim.UI
             }
             GUILayout.EndHorizontal();
 
-            GUILayout.Space(26);
+            GUILayout.Space(10);
 
-            if (GUILayout.Button("◀   LƯU & QUAY LẠI (BACK TO MAIN MENU)", stylePrimaryBtn, GUILayout.Height(46)))
+            // 5. Audio Settings
+            GUILayout.Label("5. CÀI ĐẶT ÂM THANH (AUDIO SETTINGS):", styleSectionLabel);
+            F1AudioSynthesizer synth = GetAudioSynthesizer();
+            if (synth != null)
+            {
+                audioMasterVolume = synth.masterVolume;
+                audioEngineVolume = synth.engineVolume;
+                audioSfxVolume = synth.sfxVolume;
+                audioIsMuted = synth.isMuted;
+            }
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Âm lượng tổng (Master): {Mathf.RoundToInt(audioMasterVolume * 100.0f)}%", styleBodyText, GUILayout.Width(220));
+            float newMaster = GUILayout.HorizontalSlider(audioMasterVolume, 0.0f, 1.0f, GUILayout.Height(20));
+            if (Mathf.Abs(newMaster - audioMasterVolume) > 0.01f)
+            {
+                audioMasterVolume = newMaster;
+                if (synth != null) synth.masterVolume = audioMasterVolume;
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Động cơ V6 Turbo: {Mathf.RoundToInt(audioEngineVolume * 100.0f)}%", styleBodyText, GUILayout.Width(220));
+            float newEng = GUILayout.HorizontalSlider(audioEngineVolume, 0.0f, 1.0f, GUILayout.Height(20));
+            if (Mathf.Abs(newEng - audioEngineVolume) > 0.01f)
+            {
+                audioEngineVolume = newEng;
+                if (synth != null)
+                {
+                    synth.engineVolume = audioEngineVolume;
+                    synth.turboVolume = audioEngineVolume * 0.9f;
+                }
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Hiệu ứng SFX: {Mathf.RoundToInt(audioSfxVolume * 100.0f)}%", styleBodyText, GUILayout.Width(220));
+            float newSfx = GUILayout.HorizontalSlider(audioSfxVolume, 0.0f, 1.0f, GUILayout.Height(20));
+            if (Mathf.Abs(newSfx - audioSfxVolume) > 0.01f)
+            {
+                audioSfxVolume = newSfx;
+                if (synth != null) synth.sfxVolume = audioSfxVolume;
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(2);
+            string muteLabel = audioIsMuted ? "🔇 ÂM THANH: ĐÃ TẮT (CLICK ĐỂ BẬT LẠI)" : "🔊 ÂM THANH: ĐANG BẬT (CLICK ĐỂ TẮT TIẾNG)";
+            if (GUILayout.Button(muteLabel, audioIsMuted ? styleSecondaryBtn : styleActivePillBtn, GUILayout.Height(28)))
+            {
+                audioIsMuted = !audioIsMuted;
+                if (synth != null) synth.isMuted = audioIsMuted;
+            }
+
+            GUILayout.Space(10);
+
+            // 6. Minimap Radar Orientation Setting
+            GUILayout.Label("6. HƯỚNG BẢN ĐỒ RADAR (MINIMAP ORIENTATION):", styleSectionLabel);
+            GUILayout.BeginHorizontal();
+            bool isHeadingUp = (CurrentMinimapMode == MinimapMode.HeadingUp);
+            if (GUILayout.Button(isHeadingUp ? "● XOAY THEO XE (HEADING-UP)" : "○ XOAY THEO XE (HEADING-UP)", isHeadingUp ? styleActivePillBtn : styleSecondaryBtn, GUILayout.Height(30)))
+            {
+                CurrentMinimapMode = MinimapMode.HeadingUp;
+            }
+            if (GUILayout.Button(!isHeadingUp ? "● CỐ ĐỊNH BẮC (NORTH-UP)" : "○ CỐ ĐỊNH BẮC (NORTH-UP)", !isHeadingUp ? styleActivePillBtn : styleSecondaryBtn, GUILayout.Height(30)))
+            {
+                CurrentMinimapMode = MinimapMode.NorthUp;
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(14);
+
+            if (GUILayout.Button("◀   LƯU & QUAY LẠI (BACK TO MAIN MENU)", stylePrimaryBtn, GUILayout.Height(38)))
             {
                 OnClickBackToMain();
             }
@@ -594,12 +725,25 @@ namespace F1Sim.UI
             GUI.Label(new Rect(timerRect.x + 16, timerRect.y + 5, 285, 20), "MONZA GRAND PRIX  •  SESSION TIME", styleSectionLabel);
             GUI.Label(new Rect(timerRect.x + 16, timerRect.y + 24, 285, 22), $"{min:D2}:{sec:00.000}", styleSubHeader);
 
+            // Respawn Notification Banner
+            if (respawnBannerTimer > 0.0f)
+            {
+                respawnBannerTimer -= Time.deltaTime;
+                float bw = 460.0f;
+                float bh = 32.0f;
+                Rect bannerRect = new Rect((w - bw) * 0.5f, 76.0f, bw, bh);
+                DrawSolidRect(bannerRect, new Color(0.88f, 0.04f, 0.02f, 0.92f));
+                DrawSolidRect(new Rect(bannerRect.x, bannerRect.y, bannerRect.width, 1.0f), F1Palette.ModenaYellow);
+                DrawSolidRect(new Rect(bannerRect.x, bannerRect.yMax - 1.0f, bannerRect.width, 1.0f), F1Palette.ModenaYellow);
+                GUI.Label(bannerRect, respawnBannerText, styleBadge);
+            }
+
             // 3. TOP-RIGHT TELEMETRY G-FORCE & SHORTCUTS PILL
             Rect topRightRect = new Rect(w - 285.0f, 20.0f, 265.0f, 64.0f);
             DrawStyledPanel(topRightRect, leftRedStripe: true);
             GUI.Label(new Rect(topRightRect.x + 14, topRightRect.y + 6, 245, 20), $"G-FORCE: LON {hudLongG:+0.0;-0.0;0.0}G  |  LAT {hudLatG:+0.0;-0.0;0.0}G", styleSubHeader);
             GUI.Label(new Rect(topRightRect.x + 14, topRightRect.y + 26, 245, 18), $"CAM: {hudCameraLabel} [C]   |   HALO [H]", styleBodyText);
-            GUI.Label(new Rect(topRightRect.x + 14, topRightRect.y + 43, 245, 18), "[T] Auto/Manual   [F] DRS   [ESC] Pause", styleMutedText);
+            GUI.Label(new Rect(topRightRect.x + 14, topRightRect.y + 43, 245, 18), "[T] Auto/Man  [F] DRS  [R] Respawn", styleMutedText);
 
             // 4. BOTTOM-RIGHT F1 BROADCAST TELEMETRY & SPEEDOMETER CLUSTER
             float clusterW = 300.0f;
@@ -607,19 +751,39 @@ namespace F1Sim.UI
             Rect clusterRect = new Rect(w - clusterW - 24.0f, h - clusterH - 24.0f, clusterW, clusterH);
             DrawStyledPanel(clusterRect, leftRedStripe: false, topRedStripe: false);
 
-            // 15-LED Shift Light Bar across Top of HUD Cluster
+            // 15-LED Shift Light Bar across Top of HUD Cluster (Green -> Yellow -> Red -> Redline Flash)
             float ledStartX = clusterRect.x + 14.0f;
             float ledY = clusterRect.y + 10.0f;
             float ledW = (clusterW - 28.0f) / 15.0f - 3.0f;
+            bool isRedline = hudRpm >= 12800.0f;
+            Color flashCol = (Mathf.Sin(Time.time * 40.0f) > 0) ? Color.magenta : Color.cyan;
+
             for (int i = 0; i < 15; i++)
             {
-                float thresh = 9800.0f + i * 240.0f;
-                Color ledCol = new Color(0.14f, 0.16f, 0.20f, 1.0f);
+                float thresh = 9500.0f + i * 235.0f;
+                Color ledCol = new Color(0.12f, 0.14f, 0.18f, 1.0f);
                 if (hudRpm >= thresh)
                 {
-                    if (i < 5) ledCol = F1Palette.DrsEmerald;
-                    else if (i < 10) ledCol = F1Palette.RacingRed;
-                    else ledCol = F1Palette.TelemetryCyan;
+                    if (isRedline && i >= 10)
+                    {
+                        ledCol = flashCol;
+                    }
+                    else if (i < 5)
+                    {
+                        ledCol = F1Palette.DrsEmerald;
+                    }
+                    else if (i < 10)
+                    {
+                        ledCol = F1Palette.ModenaYellow;
+                    }
+                    else if (i < 14)
+                    {
+                        ledCol = F1Palette.RacingRed;
+                    }
+                    else
+                    {
+                        ledCol = isRedline ? flashCol : F1Palette.RacingRed;
+                    }
                 }
                 DrawSolidRect(new Rect(ledStartX + i * (ledW + 3.0f), ledY, ledW, 8.0f), ledCol);
             }
@@ -660,6 +824,156 @@ namespace F1Sim.UI
             bool isAutoMode = (CurrentTransmission == TransmissionMode.Automatic);
             DrawSolidRect(transPill, isAutoMode ? new Color(0.16f, 0.28f, 0.45f) : new Color(0.55f, 0.22f, 0.05f));
             GUI.Label(transPill, isAutoMode ? "GEAR: AUTO [T]" : "GEAR: MANUAL [E/Q]", styleBadge);
+
+            // 5. BOTTOM-LEFT 2D CIRCUIT RADAR MINIMAP
+            DrawMinimap(w, h);
+        }
+
+        private void EnsureMinimapPoints()
+        {
+            if (minimapTrackPoints != null) return;
+            List<Vector3> wps = MonzaTrackData.GetMonzaWaypoints();
+            TrackSpline sp = new TrackSpline(wps);
+            int samples = 240;
+            minimapTrackPoints = new Vector2[samples];
+            minimapDrsZones = new bool[samples];
+            for (int i = 0; i < samples; i++)
+            {
+                float s = (i / (float)samples) * sp.Length;
+                Vector3 pt = sp.GetPoint(s);
+                minimapTrackPoints[i] = new Vector2(pt.x, pt.z);
+                minimapDrsZones[i] = MonzaTrackData.IsInDrsZone(s);
+            }
+        }
+
+        private void DrawMinimap(float w, float h)
+        {
+            EnsureMinimapPoints();
+            float mapW = 190.0f;
+            float mapH = 210.0f;
+            Rect mapRect = new Rect(24.0f, h - mapH - 24.0f, mapW, mapH);
+            DrawStyledPanel(mapRect, leftRedStripe: true, topRedStripe: false);
+
+            string title = (CurrentMinimapMode == MinimapMode.HeadingUp) ? "MONZA • HEADING-UP" : "MONZA • NORTH-UP";
+            GUI.Label(new Rect(mapRect.x + 10, mapRect.y + 4, mapW - 20, 18), title, styleSectionLabel);
+
+            Rect inner = new Rect(mapRect.x + 10.0f, mapRect.y + 24.0f, mapW - 20.0f, mapH - 32.0f);
+
+            if (CurrentMinimapMode == MinimapMode.HeadingUp)
+            {
+                Vector2 center = new Vector2(inner.x + inner.width * 0.5f, inner.y + inner.height * 0.55f);
+                float cosY = Mathf.Cos(hudPlayerYaw);
+                float sinY = Mathf.Sin(hudPlayerYaw);
+                float radarScale = 0.050f;
+
+                // 1. Draw Rotated Circuit Outline
+                for (int i = 0; i < minimapTrackPoints.Length; i++)
+                {
+                    Vector2 pt = minimapTrackPoints[i];
+                    float relX = pt.x - hudPlayerPos.x;
+                    float relZ = pt.y - hudPlayerPos.z;
+
+                    float localX = relX * sinY - relZ * cosY;
+                    float localFwd = relX * cosY + relZ * sinY;
+
+                    float px = center.x + localX * radarScale;
+                    float py = center.y - localFwd * radarScale;
+
+                    if (!inner.Contains(new Vector2(px, py))) continue;
+
+                    Color dotCol = minimapDrsZones[i] ? F1Palette.DrsEmerald : new Color(0.42f, 0.48f, 0.58f, 0.85f);
+                    DrawSolidRect(new Rect(px - 1.0f, py - 1.0f, 2.5f, 2.5f), dotCol);
+                }
+
+                // 2. Start/Finish Line Indicator
+                float relSfx = 0.0f - hudPlayerPos.x;
+                float relSfz = 0.0f - hudPlayerPos.z;
+                float sfLocalX = relSfx * sinY - relSfz * cosY;
+                float sfLocalFwd = relSfx * cosY + relSfz * sinY;
+                float sfpx = center.x + sfLocalX * radarScale;
+                float sfpy = center.y - sfLocalFwd * radarScale;
+                if (inner.Contains(new Vector2(sfpx, sfpy)))
+                {
+                    DrawSolidRect(new Rect(sfpx - 4, sfpy - 1, 8, 2), Color.white);
+                }
+
+                // 3. Draw AI Cars
+                for (int i = 0; i < hudAiPositions.Count; i++)
+                {
+                    Vector3 aiPos = hudAiPositions[i];
+                    float relX = aiPos.x - hudPlayerPos.x;
+                    float relZ = aiPos.z - hudPlayerPos.z;
+
+                    float localX = relX * sinY - relZ * cosY;
+                    float localFwd = relX * cosY + relZ * sinY;
+
+                    float apx = center.x + localX * radarScale;
+                    float apy = center.y - localFwd * radarScale;
+
+                    if (!inner.Contains(new Vector2(apx, apy))) continue;
+
+                    Color aiCol = (i < hudAiColors.Count) ? hudAiColors[i] : F1Palette.ModenaYellow;
+                    DrawSolidRect(new Rect(apx - 2.5f, apy - 2.5f, 5.0f, 5.0f), aiCol);
+                }
+
+                // 4. Draw Player Car Fixed at Center pointing straight UP
+                DrawSolidRect(new Rect(center.x - 4.5f, center.y - 4.5f, 9.0f, 9.0f), Color.white);
+                DrawSolidRect(new Rect(center.x - 3.0f, center.y - 3.0f, 6.0f, 6.0f), F1Palette.RacingRed);
+                // Fixed Forward Heading Indicator Arrow (pointing straight up)
+                DrawSolidRect(new Rect(center.x - 1.0f, center.y - 12.0f, 2.5f, 7.0f), Color.yellow);
+                DrawSolidRect(new Rect(center.x - 2.5f, center.y - 10.0f, 5.5f, 2.0f), Color.yellow);
+            }
+            else
+            {
+                // North-Up Mode (Fixed circuit orientation)
+                // Draw Circuit Outline
+                for (int i = 0; i < minimapTrackPoints.Length; i++)
+                {
+                    Vector2 pt = minimapTrackPoints[i];
+                    float nx = Mathf.Clamp01((pt.x - MapMinX) / (MapMaxX - MapMinX));
+                    float nz = Mathf.Clamp01((pt.y - MapMinZ) / (MapMaxZ - MapMinZ));
+                    float px = inner.x + nx * inner.width;
+                    float py = inner.y + (1.0f - nz) * inner.height;
+
+                    Color dotCol = minimapDrsZones[i] ? F1Palette.DrsEmerald : new Color(0.42f, 0.48f, 0.58f, 0.85f);
+                    DrawSolidRect(new Rect(px - 1.0f, py - 1.0f, 2.5f, 2.5f), dotCol);
+                }
+
+                // Start/Finish Line Indicator
+                float sfnx = Mathf.Clamp01((0.0f - MapMinX) / (MapMaxX - MapMinX));
+                float sfnz = Mathf.Clamp01((0.0f - MapMinZ) / (MapMaxZ - MapMinZ));
+                float sfpx = inner.x + sfnx * inner.width;
+                float sfpy = inner.y + (1.0f - sfnz) * inner.height;
+                DrawSolidRect(new Rect(sfpx - 4, sfpy - 1, 8, 2), Color.white);
+
+                // Draw AI Cars
+                for (int i = 0; i < hudAiPositions.Count; i++)
+                {
+                    Vector3 aiPos = hudAiPositions[i];
+                    float anx = Mathf.Clamp01((aiPos.x - MapMinX) / (MapMaxX - MapMinX));
+                    float anz = Mathf.Clamp01((aiPos.z - MapMinZ) / (MapMaxZ - MapMinZ));
+                    float apx = inner.x + anx * inner.width;
+                    float apy = inner.y + (1.0f - anz) * inner.height;
+                    Color aiCol = (i < hudAiColors.Count) ? hudAiColors[i] : F1Palette.ModenaYellow;
+                    DrawSolidRect(new Rect(apx - 2.5f, apy - 2.5f, 5.0f, 5.0f), aiCol);
+                }
+
+                // Draw Player Car (Bright Outline + Red Core + Heading Tick)
+                float pnx = Mathf.Clamp01((hudPlayerPos.x - MapMinX) / (MapMaxX - MapMinX));
+                float pnz = Mathf.Clamp01((hudPlayerPos.z - MapMinZ) / (MapMaxZ - MapMinZ));
+                float ppx = inner.x + pnx * inner.width;
+                float ppy = inner.y + (1.0f - pnz) * inner.height;
+
+                DrawSolidRect(new Rect(ppx - 4.5f, ppy - 4.5f, 9.0f, 9.0f), Color.white);
+                DrawSolidRect(new Rect(ppx - 3.0f, ppy - 3.0f, 6.0f, 6.0f), F1Palette.RacingRed);
+
+                // Heading Vector Tick
+                float headingAngle = hudPlayerYaw;
+                float tickLen = 8.0f;
+                float tx = ppx + Mathf.Cos(headingAngle) * tickLen;
+                float ty = ppy - Mathf.Sin(headingAngle) * tickLen;
+                DrawSolidRect(new Rect(tx - 1.0f, ty - 1.0f, 2.5f, 2.5f), Color.yellow);
+            }
         }
 
         private void DrawPauseMenu(float w, float h)

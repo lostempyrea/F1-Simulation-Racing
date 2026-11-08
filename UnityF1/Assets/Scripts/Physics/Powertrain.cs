@@ -46,7 +46,7 @@ namespace F1Sim.Physics
         public float Rpm => currentRpm;
         public int CurrentGear => currentGear;
 
-        public void Step(float throttle, float vx, float dt)
+        public void Step(float throttle, float vx, float dt, float brake = 0.0f)
         {
             if (!isRunning)
             {
@@ -55,9 +55,18 @@ namespace F1Sim.Physics
             }
 
             // Target RPM derived from wheel speed and current gear ratio
-            float ratio = (currentGear >= 1 && currentGear <= 8) ? gearRatios[currentGear] * finalDriveRatio : 0.0f;
+            float ratio = 0.0f;
+            if (currentGear >= 1 && currentGear <= 8)
+            {
+                ratio = gearRatios[currentGear] * finalDriveRatio;
+            }
+            else if (currentGear == -1)
+            {
+                ratio = gearRatios[0] * finalDriveRatio; // -3.20f * 3.85f
+            }
+
             float wheelRadius = 0.360f;
-            float targetRpm = (vx / wheelRadius) * ratio * (60.0f / (2.0f * Mathf.PI));
+            float targetRpm = (ratio != 0.0f) ? Mathf.Abs(vx / wheelRadius) * Mathf.Abs(ratio) * (60.0f / (2.0f * Mathf.PI)) : 0.0f;
 
             if (currentGear == 0) // Neutral
             {
@@ -72,13 +81,28 @@ namespace F1Sim.Physics
             // Automatic gearshift logic
             if (transmissionMode == TransmissionMode.Automatic)
             {
-                if (currentRpm >= upshiftRpm && currentGear < 8)
+                // Switch to Reverse if almost stopped and holding brake with no throttle
+                if (Mathf.Abs(vx) < 0.8f && brake > 0.15f && throttle < 0.05f && currentGear > 0)
                 {
-                    ShiftUp();
+                    currentGear = -1;
+                    OnShiftDown?.Invoke();
                 }
-                else if (currentRpm <= downshiftRpm && currentGear > 1 && vx > 2.0f)
+                // Switch from Reverse back to 1st gear if pressing throttle
+                else if (currentGear == -1 && throttle > 0.15f && brake < 0.05f)
                 {
-                    ShiftDown();
+                    currentGear = 1;
+                    OnShiftUp?.Invoke();
+                }
+                else if (currentGear >= 1)
+                {
+                    if (currentRpm >= upshiftRpm && currentGear < 8)
+                    {
+                        ShiftUp();
+                    }
+                    else if (currentRpm <= downshiftRpm && currentGear > 1 && vx > 2.0f)
+                    {
+                        ShiftDown();
+                    }
                 }
                 else if (currentGear == 0 && throttle > 0.05f)
                 {
@@ -89,18 +113,36 @@ namespace F1Sim.Physics
 
         public float GetRearAxleTorque()
         {
-            if (!isRunning || currentGear <= 0 || currentGear > 8)
+            if (!isRunning || currentGear == 0)
+                return 0.0f;
+
+            float ratio = 0.0f;
+            if (currentGear >= 1 && currentGear <= 8)
+                ratio = gearRatios[currentGear] * finalDriveRatio;
+            else if (currentGear == -1)
+                ratio = gearRatios[0] * finalDriveRatio; // Negative (-3.20 * 3.85)
+            else
                 return 0.0f;
 
             // Power curve: peak torque between 9,000 and 12,000 RPM + instant MGU-K boost
             float rpmFrac = Mathf.Clamp01((currentRpm - idleRpm) / (redlineRpm - idleRpm));
             float iceTorque = maxEngineTorque * (0.65f + 0.35f * Mathf.Sin(rpmFrac * Mathf.PI));
-            float totalTorque = (iceTorque + mgukTorque) * gearRatios[currentGear] * finalDriveRatio;
+            float totalTorque = (iceTorque + mgukTorque) * ratio;
             return totalTorque;
         }
 
         public bool ShiftUp()
         {
+            if (currentGear == -1)
+            {
+                currentGear = 0; // Neutral
+                return true;
+            }
+            if (currentGear == 0)
+            {
+                currentGear = 1; // 1st
+                return true;
+            }
             if (currentGear < 8)
             {
                 currentGear++;
@@ -118,9 +160,14 @@ namespace F1Sim.Physics
                 OnShiftDown?.Invoke();
                 return true;
             }
-            else if (currentGear == 1)
+            if (currentGear == 1)
             {
                 currentGear = 0; // Neutral
+                return true;
+            }
+            if (currentGear == 0)
+            {
+                currentGear = -1; // Reverse
                 return true;
             }
             return false;

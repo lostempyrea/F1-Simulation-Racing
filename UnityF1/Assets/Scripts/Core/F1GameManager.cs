@@ -98,6 +98,14 @@ namespace F1Sim.Core
                 GameObject carObj = new GameObject("Player_F1_Vehicle");
                 carObj.transform.SetParent(transform, false);
                 playerVehicle = carObj.AddComponent<VehicleDynamics>();
+
+                F1CarModelBuilder carModel = carObj.AddComponent<F1CarModelBuilder>();
+                carModel.vehicle = playerVehicle;
+                carModel.primaryLivery = F1Palette.RacingRed;
+                carModel.accentLivery = F1Palette.ModenaYellow;
+                carModel.helmetColor = Color.white;
+                carModel.isPlayerCar = true;
+                carModel.BuildCarModel();
             }
 
             // 4. Cockpit & Front Chassis Model Builder
@@ -128,6 +136,10 @@ namespace F1Sim.Core
                 cockpitCamera = mainCam.gameObject.AddComponent<F1CockpitCamera>();
             cockpitCamera.vehicle = playerVehicle;
             cockpitCamera.mainCamera = mainCam;
+            if (playerVehicle != null)
+            {
+                playerVehicle.OnImpact += (intensity) => cockpitCamera?.TriggerImpact(intensity);
+            }
 
             // 6. Broadcast Menu & HUD System
             if (menuManager == null)
@@ -407,6 +419,7 @@ namespace F1Sim.Core
             // Manual gear shifts & Transmission Mode Toggle
             if (Input.GetKeyDown(KeyCode.E)) playerVehicle?.powertrain?.ShiftUp();
             if (Input.GetKeyDown(KeyCode.Q)) playerVehicle?.powertrain?.ShiftDown();
+            if (Input.GetKeyDown(KeyCode.R)) RespawnPlayerOnTrack();
             if (Input.GetKeyDown(KeyCode.T))
             {
                 playerVehicle?.powertrain?.ToggleTransmissionMode();
@@ -479,13 +492,27 @@ namespace F1Sim.Core
             {
                 List<DriverStandingEntry> standings = BuildLiveStandings();
                 string camLabel = cockpitCamera != null ? cockpitCamera.cameraMode.ToString().ToUpperInvariant() : "COCKPIT";
+
+                List<Vector3> aiPos = new List<Vector3>(aiDrivers.Count);
+                List<Color> aiCol = new List<Color>(aiDrivers.Count);
+                for (int i = 0; i < aiDrivers.Count; i++)
+                {
+                    if (aiDrivers[i] != null)
+                    {
+                        aiPos.Add(aiDrivers[i].transform.position);
+                        aiCol.Add(aiDrivers[i].profile != null ? aiDrivers[i].profile.teamColor : Color.yellow);
+                    }
+                }
+
                 menuManager.UpdateTelemetryHUD(
                     playerVehicle,
                     playerCurrentLap,
                     totalLaps,
                     simTime - playerLapStartTime,
                     camLabel,
-                    standings);
+                    standings,
+                    aiPos,
+                    aiCol);
             }
         }
 
@@ -553,6 +580,34 @@ namespace F1Sim.Core
                         cockpitCamera.cameraMode.ToString().ToUpperInvariant());
                 }
             }
+        }
+
+        public void RespawnPlayerOnTrack()
+        {
+            if (playerVehicle == null || spline == null) return;
+
+            spline.ProjectPoint(playerVehicle.state.worldPosition, out float sPlayer, out _);
+            Vector3 centerPos = spline.GetPoint(sPlayer) + Vector3.up * 0.15f;
+            Vector3 tan = spline.GetTangent(sPlayer);
+            float yawRad = Mathf.Atan2(tan.z, tan.x);
+
+            playerVehicle.SetWorldPosition(centerPos, yawRad);
+            playerVehicle.state.vx = 0.0f;
+            playerVehicle.state.vy = 0.0f;
+            playerVehicle.state.yawRate = 0.0f;
+            playerVehicle.state.ax = 0.0f;
+            playerVehicle.state.ay = 0.0f;
+            playerVehicle.state.throttle = 0.0f;
+            playerVehicle.state.brake = 0.0f;
+            playerVehicle.state.gear = 1;
+            playerVehicle.state.drsActive = false;
+            if (playerVehicle.powertrain != null)
+            {
+                playerVehicle.powertrain.currentGear = 1;
+                playerVehicle.powertrain.currentRpm = playerVehicle.powertrain.idleRpm;
+            }
+
+            menuManager?.ShowRespawnBanner("ĐÃ ĐẶT LẠI XE TRÊN ĐƯỜNG ĐUA (RESPAWN)");
         }
 
         private void StepAutoCaptureSequence()

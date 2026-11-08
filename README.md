@@ -1,11 +1,14 @@
-# 🏎️ F1 Simulation Racing — Monza Grand Prix
+# 🏎️ F1 Simulation Racing — Monza Grand Prix (Unity 6 URP)
 
-[![Python Tests](https://img.shields.io/badge/Physics%20Tests-47%2F47%20Passing-brightgreen?style=for-the-badge&logo=pytest)](tests/)
-[![Python Version](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Unity Version](https://img.shields.io/badge/Unity-6000.3%20URP-000000?style=for-the-badge&logo=unity&logoColor=white)](https://unity.com)
+[![Physics Benchmark](https://img.shields.io/badge/Physics%20Benchmarks-47%2F47%20Passing-brightgreen?style=for-the-badge&logo=pytest)](tests/)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2064--bit-blue?style=for-the-badge&logo=windows)](Build/)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
-An authentic, dual-engine Formula 1 racing simulation featuring high-fidelity vehicle dynamics, telemetry benchmarks, and immersive 3D racing at the **Autodromo Nazionale Monza**.
+An authentic, high-fidelity Formula 1 racing simulation game built on **Unity 6 Universal Render Pipeline (URP)** featuring realistic vehicle dynamics, 3D Monza circuit, 5 AI competitors, authentic cockpit perspective, and broadcast telemetry.
+
+> [!NOTE]
+> **Execution Platform Notice**: Real-time interactive gameplay, rendering, audio, and UI are **100% focused and developed on Unity 6 URP**. The Python codebase is retained solely as an offline deterministic physics benchmark and CI unit validation suite.
 
 ---
 
@@ -17,36 +20,34 @@ An authentic, dual-engine Formula 1 racing simulation featuring high-fidelity ve
 
 ---
 
-## ⚡ Architecture: Dual-Engine Design
-
-The project is built on a twin-engine paradigm ensuring deterministic physics validation alongside real-time 3D presentation:
+## ⚡ Architecture: Unity 6 URP Game & Physics Benchmarks
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                       F1 SIMULATION RACING SUITE                        │
+│              FORMULA 1 GRAND PRIX SIMULATION (UNITY 6 URP)              │
 ├────────────────────────────────────┬────────────────────────────────────┤
-│   🐍 Python 3 Physics Benchmark    │    🎮 Unity 6 URP 3D Racing Game   │
-│   (Determinism & Validation)       │   (Realtime Gameplay & Visuals)    │
+│    🎮 Unity 6 URP 3D Racing Game   │   🐍 Offline Physics Benchmarks    │
+│    (Primary Interactive Runtime)   │   (Determinism & CI Validation)    │
 ├────────────────────────────────────┼────────────────────────────────────┤
-│ • 120 Hz Fixed Accumulator Solver  │ • FixedUpdate 120 Hz Substepping   │
-│ • Pure NumPy Math Core             │ • High-Fidelity 3D Monza Mesh      │
-│ • ModernGL Headless / GUI Preview  │ • Universal Render Pipeline (URP)  │
-│ • 47 Automated Pytest Benchmarks   │ • Cockpit & Chase Dynamic Cameras  │
-│ • Realtime Telemetry Export (CSV)  │ • Procedural Engine Audio & AI Grid│
+│ • FixedUpdate 120 Hz Substepping   │ • 120 Hz Fixed Accumulator Solver  │
+│ • High-Fidelity 3D Monza Mesh      │ • Pure NumPy Math Core             │
+│ • Universal Render Pipeline (URP)  │ • 47 Automated Pytest Benchmarks   │
+│ • Cockpit W14/W15 & Chase Cameras  │ • 0-100, 0-200, Braking Validation │
+│ • Procedural Engine Audio & AI Grid│ • Headless CI Regression Checks    │
 └────────────────────────────────────┴────────────────────────────────────┘
 ```
 
-1. **Python 3 ModernGL Benchmark Engine (`f1sim/`)**:
-   - Deterministic 120 Hz fixed-step physics engine.
-   - Comprehensive test harness (`pytest`) validating 0–100 km/h, 0–200 km/h, 200–0 braking distances, top speeds, power breakaway oversteer, and zero-crossing standstill latching.
-   - Live telemetry output and lightweight ModernGL visualizer.
-
-2. **Unity 6 URP Standalone Game (`UnityF1/`)**:
-   - Fully synchronized C# physics implementation mirroring the Python formulation line-by-line.
-   - Procedural 3D track mesh for Monza with elevation, banking, kerbs, and gravel runoffs.
-   - Interactive cockpit with functional digital dashboard, gear/RPM displays, steering wheel rotation, and FIA starting lights.
+1. **Unity 6 URP Standalone Game (`UnityF1/` & `Build/F1_GrandPrix.exe`)**:
+   - Primary 100% native execution platform.
+   - Procedural 3D track mesh for Monza with 0.40m road slab thickness, elevation, banking, kerbs, and gravel runoffs.
+   - Interactive Mercedes W14/W15-inspired cockpit with butterfly steering wheel, digital telemetry LCD (PCU-8D), gear/RPM LEDs, and FIA starting lights.
    - Dynamic chase camera with speed-dependent FOV, shake, and rumble feedback.
-   - Grid of AI competitors running Catmull-Rom spline trajectory tracking with collision avoidance.
+   - Grid of 5 AI competitors running Catmull-Rom spline trajectory tracking with collision avoidance.
+   - Instant track respawn kinematics on `[R]` key.
+
+2. **Python Physics Benchmark Suite (`f1sim/` & `tests/`)**:
+   - Retained exclusively for deterministic CI verification and mathematical benchmark validation.
+   - 47 automated `pytest` test cases verifying 0–100 km/h acceleration, 200–0 braking distances, top speeds, power breakaway oversteer, and zero-crossing standstill latching.
 
 ---
 
@@ -111,36 +112,23 @@ The project is built on a twin-engine paradigm ensuring deterministic physics va
 
 ### Quick Run (Windows)
 Double-click either launcher script in the project root:
-- `Play_F1_Unity.bat`: Launches the compiled Unity standalone build directly (`Build/F1_GrandPrix.exe`).
-- `Play_F1_Simulation.bat`: Launches the Python simulation.
+- `Play_F1_Unity.bat`: Launches the compiled Unity standalone game (`Build/F1_GrandPrix.exe`) directly.
+- `Play_F1_Simulation.bat`: Shortcut to launch the Unity standalone game.
 
 ---
 
-### Python Environment Setup
+### Running the Python Benchmark & Unit Tests
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/lostempyrea/F1-Simulation-Racing.git
-   cd F1-Simulation-Racing
-   ```
+The Python environment is used for offline deterministic physics validation:
 
-2. **Create and activate a virtual environment**:
-   ```bash
-   python -m venv .venv
-   # Windows PowerShell:
-   .venv\Scripts\Activate.ps1
-   # Windows Command Prompt:
-   .venv\Scripts\activate.bat
-   ```
-
-3. **Install dependencies**:
+1. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Run the simulation**:
+2. **Run all 47 physics benchmarks**:
    ```bash
-   python main.py
+   python -m pytest tests/test_milestone1_physics.py tests/test_challenger_m1_iter2_handling.py tests/test_high_speed_stability.py -v
    ```
 
 ---

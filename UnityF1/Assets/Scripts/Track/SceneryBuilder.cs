@@ -30,6 +30,7 @@ namespace F1Sim.Track
             sceneryRoot.transform.SetParent(transform, false);
 
             BuildParklandTerrain(sceneryRoot.transform);
+            BuildElevatedTrackSupports(spline, sceneryRoot.transform);
             BuildArmcoAndTecproBarriers(spline, sceneryRoot.transform);
             BuildGrandstandsAndPaddock(spline, sceneryRoot.transform);
             BuildOverpassBridges(spline, sceneryRoot.transform);
@@ -43,9 +44,67 @@ namespace F1Sim.Track
             GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
             ground.name = "Monza_Parkland_Ground";
             ground.transform.SetParent(parent, false);
-            ground.transform.position = new Vector3(0.0f, -0.08f, 600.0f);
-            ground.transform.localScale = new Vector3(4500.0f, 0.14f, 4500.0f);
+            ground.transform.position = new Vector3(100.0f, -0.25f, 1750.0f);
+            ground.transform.localScale = new Vector3(7000.0f, 0.20f, 7000.0f);
             ground.GetComponent<Renderer>().sharedMaterial = F1Palette.CreateGrassMaterial();
+        }
+
+        private void BuildElevatedTrackSupports(TrackSpline spline, Transform parent)
+        {
+            GameObject supportGroup = new GameObject("Elevated_Track_Supports");
+            supportGroup.transform.SetParent(parent, false);
+
+            Material pillarMat = F1Palette.GetOrCreateMaterial("Mat_BridgePillars", new Color(0.48f, 0.52f, 0.56f), 0.15f, 0.40f);
+            Material earthMat = F1Palette.GetOrCreateMaterial("Mat_EarthEmbankment", F1Palette.ParkGrassDark, 0.05f, 0.20f);
+
+            float length = spline.Length;
+            float step = 15.0f;
+            int count = Mathf.RoundToInt(length / step);
+
+            for (int i = 0; i < count; i++)
+            {
+                float s = i * step;
+                Vector3 center = spline.GetPoint(s);
+
+                // If track is elevated above 0.75m (e.g. Lesmo curves up to Y=5.5m)
+                if (center.y > 0.75f)
+                {
+                    spline.GetFrenetFrame(s, out Vector3 tan, out Vector3 lat, out Vector3 norm);
+                    float trackW = MonzaTrackData.TrackWidth;
+                    float groundY = -0.15f;
+                    float elevH = center.y - groundY;
+
+                    // 1. Solid embankment base underneath track ribbon
+                    GameObject embankment = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    embankment.name = $"Embankment_s{s:F0}";
+                    embankment.transform.SetParent(supportGroup.transform, false);
+                    embankment.transform.position = new Vector3(center.x, groundY + elevH * 0.5f, center.z);
+                    embankment.transform.rotation = Quaternion.LookRotation(tan, Vector3.up);
+                    embankment.transform.localScale = new Vector3(trackW + 4.5f, elevH, step * 1.05f);
+                    embankment.GetComponent<Renderer>().sharedMaterial = earthMat;
+                    Collider cEmb = embankment.GetComponent<Collider>();
+                    if (cEmb != null) Destroy(cEmb);
+
+                    // 2. Concrete abutment pillars every 30m for sections > 2.0m high
+                    if (center.y > 2.0f && (i % 2 == 0))
+                    {
+                        for (int side = -1; side <= 1; side += 2)
+                        {
+                            GameObject pillar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                            pillar.name = $"Concrete_Pillar_{(side < 0 ? "L" : "R")}_s{s:F0}";
+                            pillar.transform.SetParent(supportGroup.transform, false);
+                            Vector3 pillarPos = center + lat * (side * (trackW * 0.5f + 0.8f));
+                            pillarPos.y = groundY + elevH * 0.5f;
+                            pillar.transform.position = pillarPos;
+                            pillar.transform.rotation = Quaternion.LookRotation(tan, Vector3.up);
+                            pillar.transform.localScale = new Vector3(1.2f, elevH, 1.2f);
+                            pillar.GetComponent<Renderer>().sharedMaterial = pillarMat;
+                            Collider cPil = pillar.GetComponent<Collider>();
+                            if (cPil != null) Destroy(cPil);
+                        }
+                    }
+                }
+            }
         }
 
         private void BuildArmcoAndTecproBarriers(TrackSpline spline, Transform parent)
@@ -61,6 +120,16 @@ namespace F1Sim.Track
             float step = 12.0f;
             int count = Mathf.RoundToInt(length / step);
             float halfWidth = MonzaTrackData.TrackWidth * 0.5f + 2.8f;
+
+            // Precompute dense track samples (every 5m) for non-adjacent safety clearance checks
+            int checkSamples = Mathf.RoundToInt(length / 5.0f);
+            Vector3[] samplePoints = new Vector3[checkSamples];
+            float[] sampleS = new float[checkSamples];
+            for (int k = 0; k < checkSamples; k++)
+            {
+                sampleS[k] = (k / (float)checkSamples) * length;
+                samplePoints[k] = spline.GetPoint(sampleS[k]);
+            }
 
             for (int i = 0; i < count; i++)
             {
@@ -84,13 +153,35 @@ namespace F1Sim.Track
                 // Left & Right continuous barrier rails
                 for (int side = -1; side <= 1; side += 2)
                 {
+                    Vector3 railPos = center + lat * (side * halfWidth) + norm * (barrierH * 0.5f);
+
+                    // Safety check: verify this barrier does not encroach into ANY non-adjacent track ribbon (< 7.0m)
+                    bool encroaches = false;
+                    float safeDistSq = 7.0f * 7.0f;
+                    for (int k = 0; k < checkSamples; k++)
+                    {
+                        float sDiff = Mathf.Abs(sampleS[k] - s);
+                        if (sDiff > length * 0.5f) sDiff = length - sDiff;
+                        if (sDiff > 35.0f)
+                        {
+                            if ((samplePoints[k] - railPos).sqrMagnitude < safeDistSq)
+                            {
+                                encroaches = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (encroaches)
+                    {
+                        continue; // Encroaches on another track ribbon, skip to keep track 100% clear
+                    }
+
                     GameObject rail = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     rail.name = $"Barrier_{i}_{(side < 0 ? "L" : "R")}";
                     rail.transform.SetParent(barrierObj.transform, false);
-                    rail.transform.position = center + lat * (side * halfWidth) + norm * (barrierH * 0.5f);
+                    rail.transform.position = railPos;
                     rail.transform.rotation = rot;
                     rail.transform.localScale = new Vector3(barrierW, barrierH, step * 1.02f);
-                    Destroy(rail.GetComponent<Collider>());
                     rail.GetComponent<Renderer>().sharedMaterial = mat;
                 }
             }
@@ -139,7 +230,6 @@ namespace F1Sim.Track
                 backWall.transform.SetParent(standGroup.transform, false);
                 backWall.transform.localPosition = new Vector3(side * 5.2f, 4.8f, 0.0f);
                 backWall.transform.localScale = new Vector3(1.6f, 9.6f, 56.0f);
-                Destroy(backWall.GetComponent<Collider>());
                 backWall.GetComponent<Renderer>().sharedMaterial = structureMat;
 
                 // Cantilevered White Canopy Roof
@@ -208,7 +298,6 @@ namespace F1Sim.Track
                     leg.transform.position = center + lat * (side * span * 0.5f) + norm * (h * 0.5f);
                     leg.transform.rotation = rot;
                     leg.transform.localScale = new Vector3(0.9f, h, 2.2f);
-                    Destroy(leg.GetComponent<Collider>());
                     leg.GetComponent<Renderer>().sharedMaterial = darkPillarMat;
                 }
 
@@ -350,8 +439,8 @@ namespace F1Sim.Track
                 0.10f);
 
             int peaks = 24;
-            float radius = 2100.0f;
-            Vector3 ringCenter = new Vector3(0.0f, -10.0f, 600.0f);
+            float radius = 3400.0f;
+            Vector3 ringCenter = new Vector3(100.0f, -10.0f, 1750.0f);
 
             for (int i = 0; i < peaks; i++)
             {

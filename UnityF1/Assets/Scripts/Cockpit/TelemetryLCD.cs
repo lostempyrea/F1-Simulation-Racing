@@ -216,10 +216,13 @@ namespace F1Sim.Cockpit
             string bbStr = $"{bbPct:F0}%";
             DrawString(bbStr, 12, 24, 2, cyan);
 
-            // Right Column: Speed KM/H
+            // Right Column: Speed KM/H & ERS Battery Bar
             string spdStr = speedKmh.ToString().PadLeft(3, ' ');
             DrawString(spdStr.Trim(), 110, 44, 2, white);
-            DrawString("KMH", 114, 24, 1, accentGold);
+            DrawString("KMH", 114, 28, 1, accentGold);
+            DrawRect(108, 12, 44, 8, panelDark, true);
+            DrawRect(108, 12, 38, 8, green, true); // ERS battery charge bar
+            DrawString("ERS", 116, 13, 1, bg);
 
             // Bottom Center: RPM numerical
             DrawString(rpm.ToString(), 62, 3, 1, white);

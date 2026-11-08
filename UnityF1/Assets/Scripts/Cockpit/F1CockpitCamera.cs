@@ -18,13 +18,13 @@ namespace F1Sim.Cockpit
         public bool isMenuOrbitActive = true;
 
         [Header("Camera Presets (Local to Car)")]
-        public Vector3 cockpitEyeOffset = new Vector3(0.0f, 0.68f, -0.24f);
+        public Vector3 cockpitEyeOffset = new Vector3(0.0f, 0.72f, -0.28f);
         public Vector3 broadcastTCamOffset = new Vector3(0.0f, 0.98f, -0.10f);
         public Vector3 chaseCamOffset = new Vector3(0.0f, 1.55f, -4.60f);
 
         [Header("Optical Parameters")]
         public Camera mainCamera;
-        public float baseFov = 68.0f;
+        public float baseFov = 80.0f;
         public float maxFovDelta = 10.0f;
 
         [Header("Neck Kinematics (2nd-Order Spring-Damper)")]
@@ -56,6 +56,16 @@ namespace F1Sim.Cockpit
         {
             int next = ((int)cameraMode + 1) % 3;
             cameraMode = (F1CameraMode)next;
+        }
+
+        public void TriggerImpact(float intensity)
+        {
+            float mag = Mathf.Clamp01(intensity);
+            neckVelocity += new Vector3(
+                Random.Range(-0.45f, 0.45f) * mag,
+                Random.Range(0.20f, 0.60f) * mag,
+                -0.60f * mag
+            );
         }
 
         private void LateUpdate()
@@ -120,7 +130,7 @@ namespace F1Sim.Cockpit
 
             // 4. Transform Placement by Camera Mode
             Vector3 baseOffset = cockpitEyeOffset;
-            float basePitchDown = 4.5f; // slight downward glance so steering wheel & track both frame nicely
+            float basePitchDown = 4.5f; // tuned F1 cockpit perspective matching Mercedes W14/W15 reference
             if (cameraMode == F1CameraMode.BroadcastTCam)
             {
                 baseOffset = broadcastTCamOffset;

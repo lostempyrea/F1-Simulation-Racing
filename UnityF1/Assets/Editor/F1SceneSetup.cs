@@ -231,9 +231,11 @@ namespace F1Sim.Editor
                     CaptureCameraToPng(cam, Path.Combine(rootOut, "Preview_3D_Showcase.png"), 1920, 1080);
 
                     // Shot B: First-Person Cockpit Driver Eye View (Steering Wheel + LCD + Halo + Mirrors + Rivals)
-                    cam.transform.position = carTf.TransformPoint(new Vector3(0.0f, 0.68f, -0.24f));
-                    cam.transform.rotation = carTf.rotation * Quaternion.Euler(2.0f, 0.0f, 0.0f);
-                    cam.fieldOfView = 68.0f;
+                    Transform helmetTr = carTf.Find("F1_Chassis_Visual/Driver_Helmet_Assembly");
+                    if (helmetTr != null) helmetTr.gameObject.SetActive(false);
+                    cam.transform.position = carTf.TransformPoint(new Vector3(0.0f, 0.72f, -0.28f));
+                    cam.transform.rotation = carTf.rotation * Quaternion.Euler(4.5f, 0.0f, 0.0f);
+                    cam.fieldOfView = 80.0f;
                     CaptureCameraToPng(cam, Path.Combine(rootOut, "Preview_3D_Cockpit.png"), 1920, 1080);
 
                     // Shot C: External Chase / Broadcast Grid View

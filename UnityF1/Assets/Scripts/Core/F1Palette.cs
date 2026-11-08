@@ -192,7 +192,12 @@ namespace F1Sim.Core
             tex.SetPixels(pixels);
             tex.Apply(true);
 
-            return GetOrCreateMaterial("Mat_MonzaAsphalt", Color.white, 0.08f, 0.32f, tex);
+            Material mat = GetOrCreateMaterial("Mat_MonzaAsphalt", Color.white, 0.08f, 0.32f, tex);
+            if (mat.HasProperty("_Cull")) mat.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Geometry;
+            if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 0.0f);
+            if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 1.0f);
+            return mat;
         }
 
         public static Material CreateKerbMaterial()
@@ -230,7 +235,12 @@ namespace F1Sim.Core
             tex.SetPixels(pixels);
             tex.Apply(true);
 
-            return GetOrCreateMaterial("Mat_FiaKerb", Color.white, 0.05f, 0.38f, tex);
+            Material kMat = GetOrCreateMaterial("Mat_FiaKerb", Color.white, 0.05f, 0.38f, tex);
+            if (kMat.HasProperty("_Cull")) kMat.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            kMat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Geometry;
+            if (kMat.HasProperty("_Surface")) kMat.SetFloat("_Surface", 0.0f);
+            if (kMat.HasProperty("_ZWrite")) kMat.SetFloat("_ZWrite", 1.0f);
+            return kMat;
         }
 
         public static Material CreateGrassMaterial()

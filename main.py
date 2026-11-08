@@ -338,7 +338,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         return app.run_headless(num_frames=args.frames if args.frames > 0 else 60)
 
-    # Interactive desktop window loop: open Pygame window IMMEDIATELY so Windows never marks it unresponsive
+    # Interactive Python game loop has been retired in favor of 100% Native Unity 6 URP
+    exe_path = Path(__file__).resolve().parent / "Build" / "F1_GrandPrix.exe"
+    if exe_path.exists():
+        print("[NOTICE] Python game loop has been retired per Product Owner decision.")
+        print(f"[LAUNCH] Starting 100% Native Unity 6 Standalone Game: {exe_path}")
+        import subprocess
+        subprocess.Popen([str(exe_path), "-screen-width", "1600", "-screen-height", "900", "-screen-fullscreen", "0"])
+        return 0
+
+    print("[NOTICE] Python interactive runner is retired. Please run Play_F1_Unity.bat or launch Unity 6 from UnityF1/.")
+    return 0
+
+    # (Legacy Python fallback archived below)
     app: Optional[F1SimulationApp] = None
     try:
         import pygame
