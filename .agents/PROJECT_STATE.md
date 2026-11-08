@@ -27,6 +27,7 @@
 ## 2. Key Files & Responsibilities
 - `Build/F1_GrandPrix.exe`: Primary self-contained 64-bit Windows standalone game executable (no Python runtime required).
 - `Play_F1_Unity.bat` & `Play_F1_Simulation.bat`: Desktop launcher scripts directly initiating `Build/F1_GrandPrix.exe`.
+- `auto_sync.bat` & `scripts/auto_sync.ps1`: Background GitHub Auto-Sync Daemon polling every 5s; automatically pulls remote agent commits with audio chime notifications.
 - `UnityF1/Assets/Scripts/Track/MonzaTrackData.cs`: Original canonical Monza circuit waypoints preserved from commit `fde1599`, ensuring 100% stable AI car pathfinding and track curvature fidelity.
 - `UnityF1/Assets/Scripts/Track/SceneryBuilder.cs`: Dense track clearance precomputation (checked every 5.0m); skips any barrier rail encroaching within 7.0m of any non-adjacent track ribbon, completely eliminating barrier intrusions.
 - `UnityF1/Assets/Scripts/Track/TrackMeshGenerator.cs`: 3D solid road slab extrusion (0.40m thickness) generating top road, side skirts, and inverted underbelly quads to permanently eliminate elevated road see-through / backface culling transparency.
@@ -43,6 +44,7 @@
 
 ### Completed:
 - [x] **Project Direction Pivot**: Retired interactive Python game runner. Updated `main.py`, `Play_F1_Simulation.bat`, and `Play_F1_Unity.bat` to execute 100% native Unity 6 standalone game.
+- [x] **Auto-Sync Daemon**: Created `auto_sync.bat` and `scripts/auto_sync.ps1` for automatic 5s polling, pulling remote agent commits, and chime alert.
 - [x] **Standalone Dependency Audit**: Verified `Build/F1_GrandPrix.exe` has zero runtime dependency on Python (runs via UnityPlayer.dll / MonoBleedingEdge).
 - [x] **Monza Track Preservation & Clearance**: Reverted `MonzaTrackData.cs` to original commit `fde1599` for perfect AI vehicle handling. Implemented precomputed 7.0m non-adjacent clearance check in `SceneryBuilder.cs` to prevent barrier crossing.
 - [x] **Solid 3D Road Slab**: Extruded 0.40m road slab with top surface, side skirts, and underbelly quads in `TrackMeshGenerator.cs`; double-sided rendering (`_Cull = Off`, `_ZWrite = 1`) in `F1Palette.cs`.
