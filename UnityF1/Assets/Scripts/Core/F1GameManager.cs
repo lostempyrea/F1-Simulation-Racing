@@ -123,11 +123,14 @@ namespace F1Sim.Core
             {
                 GameObject camObj = new GameObject("Main Camera");
                 mainCam = camObj.AddComponent<Camera>();
-                camObj.AddComponent<AudioListener>();
                 camObj.tag = "MainCamera";
             }
+            if (mainCam.GetComponent<AudioListener>() == null)
+            {
+                mainCam.gameObject.AddComponent<AudioListener>();
+            }
             mainCam.nearClipPlane = 0.05f;
-            mainCam.farClipPlane = 3500.0f;
+            mainCam.farClipPlane = 4500.0f;
             mainCam.clearFlags = CameraClearFlags.Skybox;
             mainCam.backgroundColor = F1Palette.SkyHorizon;
 
@@ -149,7 +152,7 @@ namespace F1Sim.Core
                 menuManager = menuObj.AddComponent<F1MenuManager>();
             }
 
-            // 7. Procedural V6 Turbo-Hybrid Audio Synthesizer (RequireComponent handles single AudioSource)
+            // 7. Procedural V6 Turbo-Hybrid Audio Synthesizer
             F1AudioSynthesizer audioSynth = playerVehicle.GetComponent<F1AudioSynthesizer>();
             if (audioSynth == null)
             {
@@ -160,7 +163,7 @@ namespace F1Sim.Core
 
         private void ConfigureLightingAndPostProcessing()
         {
-            // 1. Golden-Hour Directional Key Light (per craft-game-floors scene-lighting.md)
+            // 1. Golden-Hour Directional Key Light (Low angle ~22 deg warm golden sunset)
             Light sun = FindFirstObjectByType<Light>();
             if (sun == null)
             {
@@ -169,12 +172,12 @@ namespace F1Sim.Core
             }
             sun.type = LightType.Directional;
             sun.color = F1Palette.SunGolden;
-            sun.intensity = 1.35f;
+            sun.intensity = 1.45f;
             sun.shadows = LightShadows.Soft;
-            sun.shadowStrength = 0.82f;
-            sun.transform.rotation = Quaternion.Euler(38.0f, -35.0f, 0.0f);
+            sun.shadowStrength = 0.85f;
+            sun.transform.rotation = Quaternion.Euler(22.0f, -42.0f, 0.0f);
 
-            // 2. Trilinear Gradient Ambient Lighting & Horizon Fog
+            // 2. Trilinear Gradient Ambient Lighting & Atmospheric Sunset Fog
             RenderSettings.ambientMode = AmbientMode.Trilight;
             RenderSettings.ambientSkyColor = F1Palette.SkyZenith;
             RenderSettings.ambientEquatorColor = F1Palette.SkyHorizon;
@@ -182,9 +185,9 @@ namespace F1Sim.Core
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
             RenderSettings.fogColor = F1Palette.SkyHorizon;
-            RenderSettings.fogDensity = 0.00038f;
+            RenderSettings.fogDensity = 0.00035f;
 
-            // 3. URP Global Volume (ACES Tonemapping, HDR Bloom, Vignette, Color Adjustments)
+            // 3. URP Camera Settings
             Camera mainCam = Camera.main;
             if (mainCam != null)
             {
@@ -195,6 +198,7 @@ namespace F1Sim.Core
                 camData.antialiasingQuality = AntialiasingQuality.High;
             }
 
+            // 4. URP Global Volume (ACES Tonemapping, HDR Bloom, Motion Blur, Color Adjustments, Vignette)
             Volume globalVol = FindFirstObjectByType<Volume>();
             if (globalVol == null)
             {
@@ -214,25 +218,29 @@ namespace F1Sim.Core
 
             var bloom = profile.Add<Bloom>(true);
             bloom.threshold.overrideState = true;
-            bloom.threshold.value = 0.92f;
+            bloom.threshold.value = 0.90f;
             bloom.intensity.overrideState = true;
-            bloom.intensity.value = 0.38f;
+            bloom.intensity.value = 0.45f;
             bloom.scatter.overrideState = true;
-            bloom.scatter.value = 0.68f;
-
-            var vignette = profile.Add<Vignette>(true);
-            vignette.intensity.overrideState = true;
-            vignette.intensity.value = 0.22f;
-            vignette.smoothness.overrideState = true;
-            vignette.smoothness.value = 0.42f;
+            bloom.scatter.value = 0.72f;
 
             var colorAdj = profile.Add<ColorAdjustments>(true);
             colorAdj.postExposure.overrideState = true;
-            colorAdj.postExposure.value = 0.15f;
+            colorAdj.postExposure.value = 0.18f;
             colorAdj.contrast.overrideState = true;
-            colorAdj.contrast.value = 10.0f;
+            colorAdj.contrast.value = 12.0f;
             colorAdj.saturation.overrideState = true;
-            colorAdj.saturation.value = 12.0f;
+            colorAdj.saturation.value = 14.0f;
+
+            var vignette = profile.Add<Vignette>(true);
+            vignette.intensity.overrideState = true;
+            vignette.intensity.value = 0.24f;
+            vignette.smoothness.overrideState = true;
+            vignette.smoothness.value = 0.45f;
+
+            var motionBlur = profile.Add<MotionBlur>(true);
+            motionBlur.intensity.overrideState = true;
+            motionBlur.intensity.value = 0.35f;
 
             globalVol.sharedProfile = profile;
         }
@@ -261,8 +269,8 @@ namespace F1Sim.Core
 
             if (trackMeshGen != null)
             {
-                trackMeshGen.GenerateTrack(spline, 2.0f);
-                trackMeshGen.GenerateKerbs(spline, 1.0f);
+                trackMeshGen.GenerateTrack(spline, 1.0f);
+                trackMeshGen.GenerateKerbs(spline, 0.8f);
                 trackMeshGen.SpawnFiaGantry(spline, 18.0f);
             }
 
@@ -278,7 +286,6 @@ namespace F1Sim.Core
         {
             if (spline == null) return;
 
-            // Clear old AI cars if restarting
             for (int i = 0; i < aiDrivers.Count; i++)
             {
                 if (aiDrivers[i] != null) Destroy(aiDrivers[i].gameObject);
@@ -299,8 +306,7 @@ namespace F1Sim.Core
                 lastProjectedS = 0.0f;
             }
 
-            // Spawn 5 3D AI F1 Cars on staggered FIA Starting Grid ahead & alongside player
-            // so the player immediately sees rival F1 cars in front at race start!
+            // Spawn 5 3D AI F1 Cars on staggered FIA Starting Grid
             List<AIDriverProfile> roster = AIDriverProfile.GetOfficialRoster();
             Color[] accentColors = new Color[]
             {
@@ -346,13 +352,13 @@ namespace F1Sim.Core
                 aiDriver.targetLateralD = sideOffset * 0.65f;
                 aiPhys.SetWorldPosition(aiPos + aiLat * sideOffset, aiYawRad);
 
-                // Build Full 3D F1 Car Mesh for AI Opponent
                 F1CarModelBuilder carVisual = aiObj.AddComponent<F1CarModelBuilder>();
                 carVisual.vehicle = aiPhys;
                 carVisual.primaryLivery = roster[i].teamColor;
                 carVisual.accentLivery = accentColors[i % accentColors.Length];
                 carVisual.helmetColor = helmetColors[i % helmetColors.Length];
                 carVisual.isPlayerCar = false;
+                carVisual.useSoftTires = (i % 2 == 0);
                 carVisual.BuildCarModel();
 
                 aiDrivers.Add(aiDriver);
@@ -375,7 +381,6 @@ namespace F1Sim.Core
                 StepAutoCaptureSequence();
             }
 
-            // Keep camera in cinematic orbit while in MainMenu or Settings
             if (cockpitCamera != null && menuManager != null)
             {
                 cockpitCamera.isMenuOrbitActive =
@@ -407,7 +412,7 @@ namespace F1Sim.Core
             float dt = Mathf.Clamp(Time.deltaTime, 0.001f, 0.05f);
             simTime += dt;
 
-            // 1. Process Player Input (No Auto-Cornering!)
+            // 1. Process Player Input
             float throttle = (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow) || autoCaptureMode) ? 1.0f : 0.0f;
             float brake = (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) ? 1.0f : 0.0f;
             float rawSteer = 0.0f;
@@ -438,13 +443,12 @@ namespace F1Sim.Core
 
                 if (Input.GetKeyDown(KeyCode.F) && canDrs)
                     playerVehicle.state.drsActive = !playerVehicle.state.drsActive;
-                // Auto-close DRS on brake or any steering input (>2 degrees road wheel)
                 if (!canDrs || brake > 0.05f || Mathf.Abs(steer) > 0.035f)
                     playerVehicle.state.drsActive = false;
 
-                // Kerb rumble feedback when riding kerbs
+                // Kerb rumble feedback
                 float halfW = MonzaTrackData.TrackWidth * 0.5f;
-                playerVehicle.KerbVibration = (Mathf.Abs(dPlayer) >= halfW - 0.4f && Mathf.Abs(dPlayer) <= halfW + 1.0f) ? 1.0f : 0.0f;
+                playerVehicle.KerbVibration = (Mathf.Abs(dPlayer) >= halfW - 0.4f && Mathf.Abs(dPlayer) <= halfW + 1.05f) ? 1.0f : 0.0f;
             }
 
             // 2. Step Player Vehicle Physics (120 Hz Substeps)
@@ -481,13 +485,13 @@ namespace F1Sim.Core
                 }
             }
 
-            // 3. Step 5 AI Opponent Drivers
+            // 3. Step AI Opponents
             for (int i = 0; i < aiDrivers.Count; i++)
             {
                 aiDrivers[i].StepAI(dt);
             }
 
-            // 4. Update Live Broadcast Standings & Telemetry HUD
+            // 4. Update Live Standings & Telemetry HUD
             if (menuManager != null && playerVehicle != null)
             {
                 List<DriverStandingEntry> standings = BuildLiveStandings();
@@ -547,7 +551,7 @@ namespace F1Sim.Core
             for (int i = 0; i < list.Count; i++)
             {
                 float distBehind = Mathf.Max(0.0f, leaderDist - list[i].distanceM);
-                list[i].gapSec = distBehind / 68.0f; // approx time gap at Monza average speed
+                list[i].gapSec = distBehind / 68.0f;
             }
             return list;
         }
@@ -562,7 +566,6 @@ namespace F1Sim.Core
 
         private void HandleSensitivityChanged(float sens)
         {
-            // Applied in Update
         }
 
         private void HandleCameraCycle()

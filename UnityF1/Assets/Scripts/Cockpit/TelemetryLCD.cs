@@ -6,7 +6,9 @@ namespace F1Sim.Cockpit
 {
     /// <summary>
     /// Renders a live McLaren PCU-8D Telemetry Display onto a procedural Texture2D
-    /// on the F1 steering wheel, plus updates the 15 3D emissive shift-light LEDs.
+    /// on the F1 steering wheel, plus updates the 15 3D emissive shift-light LEDs
+    /// with authentic F1 sequence: 4 Green -> 4 Yellow -> 4 Red -> 3 Purple/Blue,
+    /// followed by full 15-LED strobe at rev limiter.
     /// </summary>
     public class TelemetryLCD : MonoBehaviour
     {
@@ -23,11 +25,11 @@ namespace F1Sim.Cockpit
         private float refreshTimer = 0.0f;
         private float phaseTime = 0.0f;
 
-        private static readonly Color LedOff   = new Color(0.08f, 0.09f, 0.11f);
-        private static readonly Color LedGreen = new Color(0.00f, 1.00f, 0.35f);
-        private static readonly Color LedAmber = new Color(1.00f, 0.72f, 0.00f);
-        private static readonly Color LedRed   = new Color(1.00f, 0.12f, 0.12f);
-        private static readonly Color LedBlue  = new Color(0.18f, 0.68f, 1.00f);
+        private static readonly Color LedOff    = new Color(0.06f, 0.07f, 0.09f);
+        private static readonly Color LedGreen  = new Color(0.00f, 1.00f, 0.35f);
+        private static readonly Color LedYellow = new Color(1.00f, 0.82f, 0.00f);
+        private static readonly Color LedRed    = new Color(1.00f, 0.08f, 0.08f);
+        private static readonly Color LedPurple = new Color(0.80f, 0.15f, 1.00f);
 
         // Compact 5x7 bitmap font for 0-9, A-Z, %, ., -, :
         private static readonly string[] GlyphMap = new string[]
@@ -89,7 +91,7 @@ namespace F1Sim.Cockpit
                 if (lcdMat.HasProperty("_BaseColor")) lcdMat.SetColor("_BaseColor", Color.white);
                 lcdMat.EnableKeyword("_EMISSION");
                 if (lcdMat.HasProperty("_EmissionMap")) lcdMat.SetTexture("_EmissionMap", lcdTex);
-                if (lcdMat.HasProperty("_EmissionColor")) lcdMat.SetColor("_EmissionColor", Color.white * 1.4f);
+                if (lcdMat.HasProperty("_EmissionColor")) lcdMat.SetColor("_EmissionColor", Color.white * 1.5f);
                 lcdQuadRenderer.sharedMaterial = lcdMat;
             }
 
@@ -157,18 +159,22 @@ namespace F1Sim.Cockpit
 
                 if (rpm >= 13400.0f)
                 {
-                    targetCol = strobe ? LedBlue : LedOff;
-                    emissionMul = strobe ? 4.0f : 0.0f;
+                    // Rev Limiter: all 15 LEDs flash simultaneously in purple
+                    targetCol = strobe ? LedPurple : LedOff;
+                    emissionMul = strobe ? 4.5f : 0.0f;
                 }
                 else
                 {
-                    float thresh = 9800.0f + i * 240.0f;
+                    float thresh = 9600.0f + i * 250.0f;
                     if (rpm >= thresh)
                     {
-                        if (i < 5) targetCol = LedGreen;
-                        else if (i < 10) targetCol = LedRed;
-                        else targetCol = LedBlue;
-                        emissionMul = 3.2f;
+                        // 15 LEDs in 4 distinct color bands: Green (0..3), Yellow (4..7), Red (8..11), Purple (12..14)
+                        if (i < 4) targetCol = LedGreen;
+                        else if (i < 8) targetCol = LedYellow;
+                        else if (i < 12) targetCol = LedRed;
+                        else targetCol = LedPurple;
+
+                        emissionMul = 3.6f;
                     }
                 }
 

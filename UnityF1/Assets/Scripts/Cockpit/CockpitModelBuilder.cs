@@ -6,9 +6,12 @@ using F1Sim.Physics;
 namespace F1Sim.Cockpit
 {
     /// <summary>
-    /// Builds a high-craft first-person F1 cockpit interior, sculpted titanium Halo,
-    /// butterfly carbon steering wheel with 15 3D emissive shift LEDs, rotary dials,
-    /// tactile buttons, rear-view mirrors, and visible front wheels/suspension.
+    /// Builds a high-craft first-person F1 cockpit interior featuring:
+    /// - Sculpted aerodynamic titanium Halo wrapped in carbon fiber weave
+    /// - Butterfly carbon steering wheel with 15 3D emissive shift LEDs (Green - Yellow - Red - Purple)
+    /// - PCU-8D live telemetry LCD, rotary encoder dials, tactile buttons & rear carbon paddle shifters
+    /// - Aerodynamic swan-neck rearview mirrors with reflective chrome glass
+    /// - Nomex fireproof driver sleeves & high-grip racing gloves with dynamic steering IK
     /// </summary>
     public class CockpitModelBuilder : MonoBehaviour
     {
@@ -32,7 +35,7 @@ namespace F1Sim.Cockpit
         private float currentSmoothedSteerDeg = 0.0f;
 
         [Header("Halo Settings")]
-        public float haloOpacity = 1.0f; // 1.0 -> 0.35 -> 0.15 -> 1.0
+        public float haloOpacity = 1.0f; // 1.0 -> 0.35 -> 0.12 -> 1.0
 
         private float columnRakeDeg = -12.0f;
         private Material haloMaterial;
@@ -68,16 +71,16 @@ namespace F1Sim.Cockpit
             cockpitRoot.transform.SetParent(transform, false);
 
             Material carbonMat = F1Palette.CreateCarbonMaterial();
-            Material alcantaraMat = F1Palette.GetOrCreateMaterial("Mat_Alcantara", F1Palette.AlcantaraGrip, 0.05f, 0.18f);
-            Material redLiveryMat = F1Palette.GetOrCreateMaterial("Mat_PlayerRed", F1Palette.RacingRed, 0.38f, 0.85f);
-            Material goldMat = F1Palette.GetOrCreateMaterial("Mat_PlayerGold", F1Palette.ModenaYellow, 0.45f, 0.80f);
-            Material chromeMat = F1Palette.GetOrCreateMaterial("Mat_Chrome", new Color(0.82f, 0.85f, 0.88f), 0.92f, 0.90f);
+            Material alcantaraMat = F1Palette.GetOrCreateMaterial("Mat_Alcantara", F1Palette.AlcantaraGrip, 0.04f, 0.16f);
+            Material redLiveryMat = F1Palette.GetOrCreateMaterial("Mat_PlayerRed", F1Palette.RacingRed, 0.38f, 0.88f, null, null, false, null, 1.0f, clearcoat: 1.0f);
+            Material goldMat = F1Palette.GetOrCreateMaterial("Mat_PlayerGold", F1Palette.ModenaYellow, 0.40f, 0.82f, null, null, false, null, 1.0f, clearcoat: 0.85f);
+            Material chromeMirrorMat = F1Palette.GetOrCreateMaterial("Mat_ChromeMirror", new Color(0.92f, 0.94f, 0.96f), 0.96f, 0.95f);
 
             haloMaterial = F1Palette.GetOrCreateMaterial(
                 "Mat_PlayerHaloTitanium",
                 F1Palette.TitaniumHalo,
-                0.55f,
-                0.65f,
+                0.72f,
+                0.68f,
                 null,
                 null,
                 transparent: true);
@@ -94,22 +97,22 @@ namespace F1Sim.Cockpit
             CreateCockpitPart(PrimitiveType.Cube, "Cockpit_Rim_Right", cockpitRoot.transform,
                 new Vector3(0.33f, 0.50f, 0.22f), new Vector3(4.0f, -5.0f, 0.0f), new Vector3(0.065f, 0.045f, 0.82f), redLiveryMat);
 
-            // Curved Dashboard Cowl & Windscreen Aero Lip (lowered so steering wheel LCD and forward sightline are 100% unobstructed)
+            // Curved Dashboard Cowl & Windscreen Aero Lip
             CreateCockpitPart(PrimitiveType.Cylinder, "Dashboard_GlareShield", cockpitRoot.transform,
                 new Vector3(0.0f, 0.36f, 0.38f), new Vector3(84.0f, 0.0f, 0.0f), new Vector3(0.48f, 0.12f, 0.12f), alcantaraMat);
             CreateCockpitPart(PrimitiveType.Cube, "Aero_Windscreen_Deflector", cockpitRoot.transform,
                 new Vector3(0.0f, 0.46f, 0.56f), new Vector3(-28.0f, 0.0f, 0.0f), new Vector3(0.32f, 0.02f, 0.01f), carbonMat);
 
-            // Nose Pitot Tube & High-Speed Camera Pods
+            // Nose Pitot Tube
             CreateCockpitPart(PrimitiveType.Cylinder, "Aero_Pitot_Tube", cockpitRoot.transform,
-                new Vector3(0.0f, 0.46f, 0.92f), new Vector3(0.0f, 0.0f, 0.0f), new Vector3(0.012f, 0.06f, 0.012f), chromeMat);
+                new Vector3(0.0f, 0.46f, 0.92f), Vector3.zero, new Vector3(0.012f, 0.06f, 0.012f), chromeMirrorMat);
 
             // 4. Sculpted Curved Titanium Halo Safety Structure
             GameObject haloObj = new GameObject("Halo_Titanium_Structure");
             haloObj.transform.SetParent(cockpitRoot.transform, false);
             haloParts.Clear();
 
-            // Slender Aerodynamic Center Pillar (thin blade-like aero profile placed above the steering wheel)
+            // Slender Aerodynamic Center Pillar (thin blade-like aero profile placed cleanly above steering wheel)
             GameObject centerPillar = CreateCockpitPart(PrimitiveType.Cube, "Halo_Center_Pillar", haloObj.transform,
                 new Vector3(0.0f, 0.68f, 0.40f), new Vector3(20.0f, 0.0f, 0.0f), new Vector3(0.016f, 0.22f, 0.032f), haloMaterial);
             haloParts.Add(centerPillar.GetComponent<Renderer>());
@@ -144,7 +147,7 @@ namespace F1Sim.Cockpit
                 haloParts.Add(archSeg.GetComponent<Renderer>());
             }
 
-            // 5. High-Craft F1 Butterfly Steering Wheel (Cleanly positioned in lower view at Y=0.42, Z=0.24)
+            // 5. High-Craft F1 Butterfly Steering Wheel
             GameObject wheelColumn = new GameObject("SteeringWheel_Column");
             wheelColumn.transform.SetParent(cockpitRoot.transform, false);
             wheelColumn.transform.localPosition = new Vector3(0.0f, 0.42f, 0.24f);
@@ -188,7 +191,7 @@ namespace F1Sim.Cockpit
                     new Vector3(0.042f, 0.075f, 0.006f), carbonMat);
             }
 
-            // 15 3D Emissive Shift-Light LEDs across the Upper Brow
+            // 15 3D Emissive Shift-Light LEDs across Upper Brow
             Renderer[] ledRenderers = new Renderer[15];
             for (int i = 0; i < 15; i++)
             {
@@ -198,7 +201,7 @@ namespace F1Sim.Cockpit
                 ledRenderers[i] = ledObj.GetComponent<Renderer>();
             }
 
-            // 6 Color-Coded Rotary Encoder Dials + 8 Push Buttons
+            // 6 Rotary Encoder Dials + 8 Tactile Buttons
             Color[] dialColors = new Color[]
             {
                 F1Palette.RacingRed, F1Palette.ModenaYellow, F1Palette.TelemetryCyan,
@@ -220,7 +223,6 @@ namespace F1Sim.Cockpit
                     dialPositions[d], new Vector3(90.0f, 0.0f, 0.0f), new Vector3(0.022f, 0.006f, 0.022f), dialMat);
             }
 
-            // 8 Tactile Push Buttons around Left & Right Bezels
             Vector3[] btnPositions = new Vector3[]
             {
                 new Vector3(-0.088f,  0.048f, -0.011f), // DRS (Green)
@@ -239,12 +241,12 @@ namespace F1Sim.Cockpit
             };
             for (int b = 0; b < btnPositions.Length; b++)
             {
-                Material btnMat = F1Palette.GetOrCreateMaterial($"Mat_SW_Btn_{b}", btnColors[b], 0.2f, 0.8f, null, btnColors[b] * 0.6f);
+                Material btnMat = F1Palette.GetOrCreateMaterial($"Mat_SW_Btn_{b}", btnColors[b], 0.2f, 0.8f, null, btnColors[b] * 0.7f);
                 CreateCockpitPart(PrimitiveType.Cylinder, $"SW_Push_Button_{b}", wheelBody.transform,
                     btnPositions[b], new Vector3(90.0f, 0.0f, 0.0f), new Vector3(0.013f, 0.005f, 0.013f), btnMat);
             }
 
-            // McLaren PCU-8D Live LCD Screen Quad
+            // PCU-8D Live Telemetry LCD Screen Quad
             GameObject lcdQuad = CreateCockpitPart(PrimitiveType.Cube, "PCU8D_LCD_Display", wheelBody.transform,
                 new Vector3(0.0f, 0.024f, -0.010f), new Vector3(0.0f, 180.0f, 0.0f), new Vector3(0.118f, 0.068f, 0.004f), carbonMat);
 
@@ -254,7 +256,7 @@ namespace F1Sim.Cockpit
             lcdComp.shiftLedRenderers = ledRenderers;
             lcdComp.InitializeLcdDisplay();
 
-            // 6. Aerodynamic Swan-Neck Wing Mirrors with Reflective Glass
+            // 6. Aerodynamic Swan-Neck Wing Mirrors with Reflective Chrome Glass Face
             for (int side = -1; side <= 1; side += 2)
             {
                 string sTag = side < 0 ? "L" : "R";
@@ -262,17 +264,17 @@ namespace F1Sim.Cockpit
                 CreateCockpitPart(PrimitiveType.Cube, $"Mirror_Stalk_{sTag}", cockpitRoot.transform,
                     new Vector3(side * 0.42f, 0.49f, 0.34f), new Vector3(0.0f, 0.0f, side * -18.0f),
                     new Vector3(0.14f, 0.018f, 0.04f), carbonMat);
-                // Mirror Aero Housing
+                // Mirror Aero Housing in Team Red Livery
                 CreateCockpitPart(PrimitiveType.Cube, $"Mirror_Housing_{sTag}", cockpitRoot.transform,
                     new Vector3(side * 0.50f, 0.52f, 0.34f), new Vector3(0.0f, side * 12.0f, 0.0f),
                     new Vector3(0.15f, 0.068f, 0.055f), redLiveryMat);
-                // Reflective Mirror Glass Face
+                // High-Reflectivity Chrome Mirror Glass Face
                 CreateCockpitPart(PrimitiveType.Cube, $"Mirror_Glass_{sTag}", cockpitRoot.transform,
                     new Vector3(side * 0.50f, 0.52f, 0.312f), new Vector3(0.0f, side * 12.0f, 0.0f),
-                    new Vector3(0.135f, 0.054f, 0.006f), chromeMat);
+                    new Vector3(0.135f, 0.054f, 0.006f), chromeMirrorMat);
             }
 
-            // 7. 3D Driver Arms & Gloves (Fireproof Nomex Suit Sleeves & Biometric Racing Gloves)
+            // 7. 3D Driver Arms & Gloves with Dynamic Steering Alignment
             Material suitMat = F1Palette.GetOrCreateMaterial("Mat_DriverSuit", new Color(0.92f, 0.92f, 0.95f), 0.1f, 0.25f);
             Material suitStripeMat = F1Palette.GetOrCreateMaterial("Mat_SuitStripe", F1Palette.RacingRed, 0.2f, 0.4f);
             Material gloveMat = F1Palette.GetOrCreateMaterial("Mat_DriverGlove", new Color(0.12f, 0.12f, 0.14f), 0.15f, 0.35f);
@@ -305,7 +307,6 @@ namespace F1Sim.Cockpit
             rGlove.transform.localRotation = Quaternion.Euler(0.0f, 0.0f, -8.0f);
             rightGloveTransform = rGlove.transform;
 
-            // Detail glove geometry for Left & Right hands
             for (int side = -1; side <= 1; side += 2)
             {
                 Transform gParent = (side < 0) ? lGlove.transform : rGlove.transform;
@@ -349,7 +350,7 @@ namespace F1Sim.Cockpit
             rArm.GetComponent<Renderer>().sharedMaterial = suitMat;
             rightArmTransform = rArm.transform;
 
-            UpdateDriverArmsKinematics();
+            UpdateDriverArmsKinematics(true);
         }
 
         private GameObject CreateCockpitPart(
@@ -391,27 +392,27 @@ namespace F1Sim.Cockpit
                 float roadWheelAngleRad = vehicle.state.steeringAngle;
                 float targetWheelRotationDeg = Mathf.Clamp(roadWheelAngleRad * Mathf.Rad2Deg * steerRatio, -180.0f, 180.0f);
 
-                // Smooth exponential interpolation eliminating steering jitter/teleporting
-                currentSmoothedSteerDeg = Mathf.Lerp(currentSmoothedSteerDeg, targetWheelRotationDeg, Time.deltaTime * 16.0f);
+                // Smooth exponential interpolation eliminating steering jitter
+                currentSmoothedSteerDeg = Mathf.Lerp(currentSmoothedSteerDeg, targetWheelRotationDeg, Time.deltaTime * 18.0f);
                 steeringWheelTransform.localRotation = Quaternion.Euler(0.0f, 0.0f, -currentSmoothedSteerDeg);
             }
 
-            UpdateDriverArmsKinematics();
+            UpdateDriverArmsKinematics(true);
         }
 
-        private void UpdateDriverArmsKinematics()
+        private void UpdateDriverArmsKinematics(bool snapImmediate = false)
         {
             if (leftShoulderAnchor != null && leftGloveTransform != null && leftArmTransform != null)
             {
-                AlignArmToHand(leftShoulderAnchor, leftGloveTransform, leftArmTransform);
+                AlignArmToHand(leftShoulderAnchor, leftGloveTransform, leftArmTransform, snapImmediate);
             }
             if (rightShoulderAnchor != null && rightGloveTransform != null && rightArmTransform != null)
             {
-                AlignArmToHand(rightShoulderAnchor, rightGloveTransform, rightArmTransform);
+                AlignArmToHand(rightShoulderAnchor, rightGloveTransform, rightArmTransform, snapImmediate);
             }
         }
 
-        private void AlignArmToHand(Transform shoulder, Transform glove, Transform arm)
+        private void AlignArmToHand(Transform shoulder, Transform glove, Transform arm, bool snapImmediate = false)
         {
             Vector3 p0 = shoulder.position;
             Vector3 p1 = glove.position;
@@ -423,11 +424,19 @@ namespace F1Sim.Cockpit
             Quaternion targetRot = Quaternion.LookRotation(dir.normalized, transform.up) * Quaternion.Euler(90.0f, 0.0f, 0.0f);
             Vector3 targetScale = new Vector3(0.072f, dist * 0.5f, 0.072f);
 
-            // Smooth interpolation for arms kinematics tracking
-            float t = Mathf.Clamp01(Time.deltaTime * 24.0f);
-            arm.position = Vector3.Lerp(arm.position, targetPos, t);
-            arm.rotation = Quaternion.Slerp(arm.rotation, targetRot, t);
-            arm.localScale = Vector3.Lerp(arm.localScale, targetScale, t);
+            if (snapImmediate || Time.deltaTime <= 0.0001f)
+            {
+                arm.position = targetPos;
+                arm.rotation = targetRot;
+                arm.localScale = targetScale;
+            }
+            else
+            {
+                float t = Mathf.Clamp01(Time.deltaTime * 24.0f);
+                arm.position = Vector3.Lerp(arm.position, targetPos, t);
+                arm.rotation = Quaternion.Slerp(arm.rotation, targetRot, t);
+                arm.localScale = Vector3.Lerp(arm.localScale, targetScale, t);
+            }
         }
 
         public void CycleHaloOpacity()

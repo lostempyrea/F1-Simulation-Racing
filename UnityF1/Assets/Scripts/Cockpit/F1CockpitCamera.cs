@@ -10,6 +10,14 @@ namespace F1Sim.Cockpit
         ChaseView = 2
     }
 
+    /// <summary>
+    /// Implements authentic Formula 1 cockpit camera with:
+    /// - 2nd-order biomechanical neck spring-damper reacting to longitudinal & lateral G-forces
+    /// - High-speed buffeting camera vibration (>280-350 km/h Monza straight speeds)
+    /// - Kerb rumble vibration & roll kick when riding curb serrations
+    /// - Dynamic optical FOV expansion with speed
+    /// - Unobstructed forward perspective matching contemporary F1 onboard cameras
+    /// </summary>
     public class F1CockpitCamera : MonoBehaviour
     {
         [Header("Target & Camera Mode")]
@@ -25,7 +33,7 @@ namespace F1Sim.Cockpit
         [Header("Optical Parameters")]
         public Camera mainCamera;
         public float baseFov = 80.0f;
-        public float maxFovDelta = 10.0f;
+        public float maxFovDelta = 12.0f;
 
         [Header("Neck Kinematics (2nd-Order Spring-Damper)")]
         public float omegaN = 22.0f;
@@ -39,8 +47,13 @@ namespace F1Sim.Cockpit
         public float rollPerLatGDeg = 2.60f;
 
         [Header("Kerb Vibration")]
-        public float kerbFreqHz = 25.0f;
-        public float kerbAmpM = 0.006f;
+        public float kerbFreqHz = 28.0f;
+        public float kerbAmpM = 0.008f;
+
+        [Header("High-Speed Buffeting (>280 - 360 km/h)")]
+        public float highSpeedThresholdKmh = 275.0f;
+        public float highSpeedMaxShakeM = 0.0045f;
+        public float highSpeedMaxRollDeg = 0.55f;
 
         private Vector3 neckOffset = Vector3.zero;
         private Vector3 neckVelocity = Vector3.zero;
@@ -74,7 +87,7 @@ namespace F1Sim.Cockpit
 
             Transform carTr = vehicle.transform;
 
-            // Cinematic Orbit Camera while in Main Menu / Settings (per craft-game-floors game-shell)
+            // Cinematic Orbit Camera while in Main Menu / Settings
             if (isMenuOrbitActive)
             {
                 orbitAngleDeg += Time.unscaledDeltaTime * 8.5f;
@@ -95,9 +108,9 @@ namespace F1Sim.Cockpit
             float dt = Mathf.Clamp(Time.deltaTime, 0.001f, 0.05f);
             phaseTime += dt;
 
-            // 1. Dynamic FOV expansion with speed
-            float vRatio = Mathf.Clamp01(vehicle.SpeedKmh / 350.0f);
-            float targetFov = baseFov + maxFovDelta * Mathf.Pow(vRatio, 1.35f);
+            // 1. Dynamic FOV expansion with speed (sensation of blistering acceleration)
+            float vRatio = Mathf.Clamp01(vehicle.SpeedKmh / 360.0f);
+            float targetFov = baseFov + maxFovDelta * Mathf.Pow(vRatio, 1.4f);
             if (mainCamera != null)
             {
                 mainCamera.fieldOfView = Mathf.Lerp(mainCamera.fieldOfView, targetFov, dt * 10.0f);
@@ -110,14 +123,25 @@ namespace F1Sim.Cockpit
             float targetX = Mathf.Clamp(-ay * latGCompliance, -maxOffsetM, maxOffsetM);
             float targetZ = Mathf.Clamp(-ax * longGCompliance, -maxOffsetM, maxOffsetM);
 
+            // Kerb rumble vibration
             float vibeY = 0.0f;
+            float kerbRoll = 0.0f;
             if (vehicle.KerbVibration > 0.01f)
             {
                 vibeY = kerbAmpM * Mathf.Sin(2.0f * Mathf.PI * kerbFreqHz * phaseTime);
+                kerbRoll = Mathf.Sin(2.0f * Mathf.PI * (kerbFreqHz * 0.5f) * phaseTime) * 1.6f;
             }
-            float targetY = Mathf.Clamp(vibeY, -maxOffsetM, maxOffsetM);
 
-            Vector3 targetVec = new Vector3(targetX, targetY, targetZ);
+            // High-speed aerodynamic buffeting shake (>280 km/h up to 360 km/h)
+            float speedKmh = vehicle.SpeedKmh;
+            float speedVibeFactor = Mathf.Clamp01((speedKmh - highSpeedThresholdKmh) / 75.0f);
+            float speedShakeX = (Mathf.PerlinNoise(phaseTime * 32.0f, 0.0f) - 0.5f) * highSpeedMaxShakeM * speedVibeFactor;
+            float speedShakeY = (Mathf.PerlinNoise(0.0f, phaseTime * 36.0f) - 0.5f) * highSpeedMaxShakeM * speedVibeFactor;
+            float speedShakeRoll = (Mathf.PerlinNoise(phaseTime * 22.0f, 15.0f) - 0.5f) * highSpeedMaxRollDeg * speedVibeFactor;
+
+            float targetY = Mathf.Clamp(vibeY + speedShakeY, -maxOffsetM, maxOffsetM);
+
+            Vector3 targetVec = new Vector3(targetX + speedShakeX, targetY, targetZ);
             Vector3 dispErr = neckOffset - targetVec;
             Vector3 accel = -dispErr * (omegaN * omegaN) - neckVelocity * (2.0f * dampingRatio * omegaN);
             neckVelocity += accel * dt;
@@ -125,12 +149,12 @@ namespace F1Sim.Cockpit
 
             // 3. Angular Head Pitch & Cornering Lean Roll
             float pitchDeg = Mathf.Clamp(-ax * pitchPerLongGDeg, -6.5f, 6.5f);
-            float rollDeg = Mathf.Clamp(ay * rollPerLatGDeg, -9.0f, 9.0f);
+            float rollDeg = Mathf.Clamp(ay * rollPerLatGDeg + kerbRoll + speedShakeRoll, -9.5f, 9.5f);
             float yawDeg = Mathf.Clamp(-vehicle.state.steeringAngle * Mathf.Rad2Deg * 0.12f, -4.5f, 4.5f);
 
             // 4. Transform Placement by Camera Mode
             Vector3 baseOffset = cockpitEyeOffset;
-            float basePitchDown = 4.5f; // tuned F1 cockpit perspective matching Mercedes W14/W15 reference
+            float basePitchDown = 4.5f; // tuned F1 cockpit perspective
             if (cameraMode == F1CameraMode.BroadcastTCam)
             {
                 baseOffset = broadcastTCamOffset;

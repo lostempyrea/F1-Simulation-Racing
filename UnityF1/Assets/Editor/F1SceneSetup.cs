@@ -35,7 +35,7 @@ namespace F1Sim.Editor
 
             Scene newScene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            // 1. Configure Trilight Ambient & Fog in Scene RenderSettings
+            // 1. Configure Trilight Ambient & Warm Golden Sunset Fog
             RenderSettings.ambientMode = AmbientMode.Trilight;
             RenderSettings.ambientSkyColor = F1Palette.SkyZenith;
             RenderSettings.ambientEquatorColor = F1Palette.SkyHorizon;
@@ -43,7 +43,7 @@ namespace F1Sim.Editor
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
             RenderSettings.fogColor = F1Palette.SkyHorizon;
-            RenderSettings.fogDensity = 0.00038f;
+            RenderSettings.fogDensity = 0.00035f;
 
             // 2. Create Main Camera with URP Post-Processing enabled
             GameObject camObj = new GameObject("Main Camera");
@@ -54,28 +54,28 @@ namespace F1Sim.Editor
             cam.backgroundColor = F1Palette.SkyHorizon;
             cam.fieldOfView = 68.0f;
             cam.nearClipPlane = 0.05f;
-            cam.farClipPlane = 3500.0f;
+            cam.farClipPlane = 4500.0f;
 
             UniversalAdditionalCameraData camData = camObj.AddComponent<UniversalAdditionalCameraData>();
             camData.renderPostProcessing = true;
             camData.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
             camData.antialiasingQuality = AntialiasingQuality.High;
 
-            // 3. Create Golden-Hour Directional Key Light
+            // 3. Create Golden-Hour Directional Key Light (Low angle ~22 deg warm golden sunset)
             GameObject lightObj = new GameObject("Sun Directional Light");
             Light sun = lightObj.AddComponent<Light>();
             sun.type = LightType.Directional;
             sun.color = F1Palette.SunGolden;
-            sun.intensity = 1.35f;
+            sun.intensity = 1.45f;
             sun.shadows = LightShadows.Soft;
-            sun.shadowStrength = 0.82f;
-            lightObj.transform.rotation = Quaternion.Euler(38.0f, -35.0f, 0.0f);
+            sun.shadowStrength = 0.85f;
+            lightObj.transform.rotation = Quaternion.Euler(22.0f, -42.0f, 0.0f);
 
             // 4. Create F1 Game Manager Root
             GameObject managerObj = new GameObject("F1_Game_Manager");
             managerObj.AddComponent<F1GameManager>();
 
-            // 5. Create URP Resource Materials & In-Scene Variant Anchors so BuildPlayer includes all URP Lit shader variants
+            // 5. Create URP Resource Materials & In-Scene Variant Anchors
             EnsureResourceMaterialsAndAnchors(managerObj.transform);
 
             // Save Scene
@@ -146,8 +146,6 @@ namespace F1Sim.Editor
 
             AssetDatabase.SaveAssets();
 
-            // Place tiny out-of-sight anchor meshes inside the scene so Unity's URP Shader Preprocessor
-            // compiles all directional light, shadow, fog, texture, emission & transparency variants into the Player build
             GameObject anchorRoot = new GameObject("URP_Shader_Variant_Anchors");
             anchorRoot.transform.SetParent(parent, false);
             anchorRoot.transform.position = new Vector3(0.0f, -200.0f, 0.0f);
@@ -165,25 +163,15 @@ namespace F1Sim.Editor
 
         private static void EnsureUrpPipelineConfigured()
         {
-            if (GraphicsSettings.defaultRenderPipeline != null)
-            {
-                return;
-            }
+            UniversalRenderPipelineAsset urpAsset = GraphicsSettings.defaultRenderPipeline as UniversalRenderPipelineAsset;
 
-            string[] guids = AssetDatabase.FindAssets("t:UniversalRenderPipelineAsset");
-            if (guids != null && guids.Length > 0)
+            if (urpAsset == null)
             {
-                string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-                UniversalRenderPipelineAsset existingAsset = AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(path);
-                if (existingAsset != null)
+                string[] guids = AssetDatabase.FindAssets("t:UniversalRenderPipelineAsset");
+                if (guids != null && guids.Length > 0)
                 {
-                    existingAsset.supportsHDR = true;
-                    existingAsset.msaaSampleCount = 4;
-                    existingAsset.shadowDistance = 220.0f;
-                    GraphicsSettings.defaultRenderPipeline = existingAsset;
-                    QualitySettings.renderPipeline = existingAsset;
-                    EditorUtility.SetDirty(existingAsset);
-                    return;
+                    string path = AssetDatabase.GUIDToAssetPath(guids[0]);
+                    urpAsset = AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(path);
                 }
             }
 
@@ -192,19 +180,87 @@ namespace F1Sim.Editor
                 Directory.CreateDirectory("Assets/Settings");
             }
 
-            UniversalRendererData rendererData = ScriptableObject.CreateInstance<UniversalRendererData>();
-            AssetDatabase.CreateAsset(rendererData, "Assets/Settings/F1_URP_Renderer.asset");
+            UniversalRendererData rendererData = AssetDatabase.LoadAssetAtPath<UniversalRendererData>("Assets/Settings/F1_URP_Renderer.asset");
+            if (rendererData == null)
+            {
+                rendererData = ScriptableObject.CreateInstance<UniversalRendererData>();
+                AssetDatabase.CreateAsset(rendererData, "Assets/Settings/F1_URP_Renderer.asset");
+            }
 
-            UniversalRenderPipelineAsset urpAsset = UniversalRenderPipelineAsset.Create(rendererData);
-            urpAsset.supportsHDR = true;
-            urpAsset.msaaSampleCount = 4;
-            urpAsset.shadowDistance = 220.0f;
-            AssetDatabase.CreateAsset(urpAsset, "Assets/Settings/F1_URP_Asset.asset");
+            // Ensure SSAO on renderer if supported
+            EnsureSsaoOnRenderer(rendererData);
+
+            if (urpAsset == null)
+            {
+                urpAsset = UniversalRenderPipelineAsset.Create(rendererData);
+                AssetDatabase.CreateAsset(urpAsset, "Assets/Settings/F1_URP_Asset.asset");
+            }
+
+            ConfigureUrpAssetSettings(urpAsset);
 
             GraphicsSettings.defaultRenderPipeline = urpAsset;
             QualitySettings.renderPipeline = urpAsset;
             AssetDatabase.SaveAssets();
-            Debug.Log("[F1 Sim] Created and assigned F1_URP_Asset with HDR, 4x MSAA, and 220m shadow distance.");
+            Debug.Log("[F1 Sim] Configured URP Asset: HDR=True, 4x MSAA, ShadowDistance=350m, 4 Cascades (4096 res).");
+        }
+
+        private static void ConfigureUrpAssetSettings(UniversalRenderPipelineAsset urpAsset)
+        {
+            if (urpAsset == null) return;
+            SerializedObject so = new SerializedObject(urpAsset);
+            so.Update();
+
+            SerializedProperty hdrProp = so.FindProperty("m_SupportsHDR");
+            if (hdrProp != null) hdrProp.boolValue = true;
+
+            SerializedProperty msaaProp = so.FindProperty("m_MSAA");
+            if (msaaProp != null) msaaProp.intValue = 4;
+
+            SerializedProperty shadowDistProp = so.FindProperty("m_ShadowDistance");
+            if (shadowDistProp != null) shadowDistProp.floatValue = 350.0f;
+
+            SerializedProperty cascadeCountProp = so.FindProperty("m_ShadowCascadeCount");
+            if (cascadeCountProp != null) cascadeCountProp.intValue = 4;
+
+            SerializedProperty shadowResProp = so.FindProperty("m_MainLightShadowmapResolution");
+            if (shadowResProp != null) shadowResProp.intValue = 4096;
+
+            SerializedProperty splitProp = so.FindProperty("m_Cascade4Split");
+            if (splitProp != null) splitProp.vector3Value = new Vector3(0.05f, 0.15f, 0.35f);
+
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(urpAsset);
+        }
+
+        private static void EnsureSsaoOnRenderer(UniversalRendererData rendererData)
+        {
+            if (rendererData == null) return;
+            bool hasSsao = false;
+            for (int i = 0; i < rendererData.rendererFeatures.Count; i++)
+            {
+                if (rendererData.rendererFeatures[i] != null &&
+                    rendererData.rendererFeatures[i].GetType().Name.Contains("ScreenSpaceAmbientOcclusion"))
+                {
+                    hasSsao = true;
+                    break;
+                }
+            }
+            if (!hasSsao)
+            {
+                var ssaoType = System.Type.GetType("UnityEngine.Rendering.Universal.ScreenSpaceAmbientOcclusion, Unity.RenderPipelines.Universal.Runtime");
+                if (ssaoType != null)
+                {
+                    var ssaoInstance = ScriptableObject.CreateInstance(ssaoType) as ScriptableRendererFeature;
+                    if (ssaoInstance != null)
+                    {
+                        ssaoInstance.name = "ScreenSpaceAmbientOcclusion";
+                        AssetDatabase.AddObjectToAsset(ssaoInstance, rendererData);
+                        rendererData.rendererFeatures.Add(ssaoInstance);
+                        rendererData.SetDirty();
+                        EditorUtility.SetDirty(rendererData);
+                    }
+                }
+            }
         }
 
         [MenuItem("F1 Simulation/Verify, Capture Previews & Build Executable")]
@@ -212,7 +268,7 @@ namespace F1Sim.Editor
         {
             SetupScene();
 
-            // 1. Instantiate full 3D world in scene for high-res RenderTexture verification
+            // 1. Instantiate full 3D world in scene for high-res verification screenshots
             F1GameManager gm = Object.FindFirstObjectByType<F1GameManager>();
             if (gm != null)
             {
@@ -223,14 +279,13 @@ namespace F1Sim.Editor
                     Transform carTf = gm.playerVehicle.transform;
                     string rootOut = @"c:\Users\nguye\PROJECT\F1";
 
-                    // Shot A: 3D Showcase Orbit View (Car + Grid + Gantry + Grandstands + Alps)
-                    Vector3 focus = carTf.position + Vector3.up * 0.65f + carTf.forward * 1.2f;
-                    cam.transform.position = focus - carTf.forward * 5.2f + carTf.right * 3.4f + Vector3.up * 1.65f;
-                    cam.transform.LookAt(focus + carTf.forward * 4.0f, Vector3.up);
+                    // Shot A: 3D Showcase Hero View (Front 3/4 Ground Effect Car + Grid + Gantry)
+                    cam.transform.position = carTf.position + carTf.forward * 3.8f + carTf.right * 2.5f + Vector3.up * 1.1f;
+                    cam.transform.LookAt(carTf.position + carTf.forward * 0.4f + Vector3.up * 0.45f, Vector3.up);
                     cam.fieldOfView = 50.0f;
                     CaptureCameraToPng(cam, Path.Combine(rootOut, "Preview_3D_Showcase.png"), 1920, 1080);
 
-                    // Shot B: First-Person Cockpit Driver Eye View (Steering Wheel + LCD + Halo + Mirrors + Rivals)
+                    // Shot B: First-Person Cockpit Driver Eye View (Butterfly Wheel + LCD + Shift LEDs + Halo + Rivals)
                     Transform helmetTr = carTf.Find("F1_Chassis_Visual/Driver_Helmet_Assembly");
                     if (helmetTr != null) helmetTr.gameObject.SetActive(false);
                     cam.transform.position = carTf.TransformPoint(new Vector3(0.0f, 0.72f, -0.28f));
@@ -238,22 +293,22 @@ namespace F1Sim.Editor
                     cam.fieldOfView = 80.0f;
                     CaptureCameraToPng(cam, Path.Combine(rootOut, "Preview_3D_Cockpit.png"), 1920, 1080);
 
-                    // Shot B2: Driver Arms & Animated Steering Wheel Cockpit View
-                    cam.transform.position = carTf.TransformPoint(new Vector3(0.0f, 0.68f, -0.24f));
-                    cam.transform.rotation = carTf.rotation * Quaternion.Euler(8.0f, 0.0f, 0.0f);
+                    // Shot B2: Driver Arms & Butterfly Wheel Cockpit View
+                    cam.transform.position = carTf.TransformPoint(new Vector3(0.0f, 0.69f, -0.24f));
+                    cam.transform.rotation = carTf.rotation * Quaternion.Euler(7.5f, 0.0f, 0.0f);
                     cam.fieldOfView = 76.0f;
                     CaptureCameraToPng(cam, Path.Combine(rootOut, "Preview_3D_Cockpit_Arms.png"), 1920, 1080);
 
-                    // Shot C: External Chase / Broadcast Grid View
-                    cam.transform.position = carTf.TransformPoint(new Vector3(0.0f, 2.05f, -5.4f));
+                    // Shot C: External Chase / Broadcast Grid View (Rear Wing + DRS + Glowing Rain Light + Diffuser)
+                    cam.transform.position = carTf.TransformPoint(new Vector3(0.0f, 2.05f, -5.2f));
                     cam.transform.LookAt(carTf.position + carTf.forward * 16.0f + Vector3.up * 0.7f, Vector3.up);
-                    cam.fieldOfView = 60.0f;
+                    cam.fieldOfView = 58.0f;
                     CaptureCameraToPng(cam, Path.Combine(rootOut, "Preview_3D_Chase.png"), 1920, 1080);
 
                     // Shot D: Grand Monza Circuit Aerial Overview (5,793m Autodromo Nazionale Layout + Royal Parkland + Alps)
-                    cam.transform.position = new Vector3(250.0f, 1550.0f, 950.0f);
-                    cam.transform.LookAt(new Vector3(250.0f, 0.0f, 1100.0f), Vector3.forward);
-                    cam.fieldOfView = 70.0f;
+                    cam.transform.position = new Vector3(250.0f, 1350.0f, -650.0f);
+                    cam.transform.LookAt(new Vector3(250.0f, 0.0f, 1200.0f), Vector3.up);
+                    cam.fieldOfView = 62.0f;
                     CaptureCameraToPng(cam, Path.Combine(rootOut, "Preview_3D_Monza.png"), 1920, 1080);
                 }
             }
@@ -280,6 +335,10 @@ namespace F1Sim.Editor
             Debug.Log($"[F1 Sim] Building Standalone Windows64 player to {exePath}...");
             BuildReport report = BuildPipeline.BuildPlayer(buildOptions);
             Debug.Log($"[F1 Sim] Build result: {report.summary.result} ({report.summary.totalErrors} errors, {report.summary.totalWarnings} warnings)");
+            if (report.summary.result != BuildResult.Succeeded)
+            {
+                throw new System.Exception($"Build failed with result {report.summary.result} and {report.summary.totalErrors} errors.");
+            }
         }
 
         private static void CaptureCameraToPng(Camera cam, string filePath, int width, int height)

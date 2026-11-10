@@ -4,6 +4,16 @@ using F1Sim.Core;
 
 namespace F1Sim.Track
 {
+    /// <summary>
+    /// Builds authentic 3D Autodromo Nazionale Monza trackside environment & scenery:
+    /// - Continuous corrugated galvanized Armco steel barriers & Tecpro energy-absorbing blocks
+    /// - FIA catch-fence safety poles & top cabling
+    /// - 14 Official Monza covered spectator Grandstand complexes & Main Straight Pit Paddock
+    /// - Historic Sopraelevata High-Speed Oval banking overpass crossing Serraglio straight
+    /// - Raked gravel runoff beds & 150m/100m/50m distance braking boards at all major corner entries
+    /// - Royal Monza Park dense forest of Mediterranean Umbrella Pines and tall Lombardy Cypresses
+    /// - Distant snow-capped Italian Alps mountain range silhouetted against the golden hour sunset
+    /// </summary>
     public class SceneryBuilder : MonoBehaviour
     {
         [Header("Scenery Materials (Auto-generated from F1Palette if null)")]
@@ -20,7 +30,7 @@ namespace F1Sim.Track
             Transform old = transform.Find("Scenery_Environment");
             if (old != null) Destroy(old.gameObject);
 
-            if (barrierMaterial == null) barrierMaterial = F1Palette.GetOrCreateMaterial("Mat_ArmcoSteel", F1Palette.ArmcoSteel, 0.70f, 0.55f);
+            if (barrierMaterial == null) barrierMaterial = F1Palette.CreateArmcoMaterial();
             if (gravelMaterial == null) gravelMaterial = F1Palette.CreateGravelMaterial();
             if (grandstandMaterial == null) grandstandMaterial = F1Palette.CreateGrandstandCrowdMaterial();
             if (treeLeavesMaterial == null) treeLeavesMaterial = F1Palette.GetOrCreateMaterial("Mat_PineCanopyDark", F1Palette.PineCanopyDark, 0.0f, 0.18f);
@@ -115,13 +125,14 @@ namespace F1Sim.Track
             Material tecproRed = F1Palette.GetOrCreateMaterial("Mat_TecproRed", F1Palette.RacingRed, 0.15f, 0.50f);
             Material tecproWhite = F1Palette.GetOrCreateMaterial("Mat_TecproWhite", F1Palette.KerbWhite, 0.15f, 0.50f);
             Material tecproBlue = F1Palette.GetOrCreateMaterial("Mat_TecproBlue", F1Palette.TecproBlue, 0.15f, 0.50f);
+            Material fencePostMat = F1Palette.GetOrCreateMaterial("Mat_FenceSteel", new Color(0.24f, 0.26f, 0.30f), 0.80f, 0.60f);
 
             float length = spline.Length;
             float step = 12.0f;
             int count = Mathf.RoundToInt(length / step);
             float halfWidth = MonzaTrackData.TrackWidth * 0.5f + 2.8f;
 
-            // Precompute dense track samples (every 5m) for non-adjacent safety clearance checks
+            // Precompute dense track samples for clearance safety checks
             int checkSamples = Mathf.RoundToInt(length / 5.0f);
             Vector3[] samplePoints = new Vector3[checkSamples];
             float[] sampleS = new float[checkSamples];
@@ -140,22 +151,21 @@ namespace F1Sim.Track
 
                 bool isChicaneZone = (s > 1180f && s < 1330f) || (s > 2150f && s < 2320f) || (s > 4150f && s < 4550f);
                 Material mat = barrierMaterial;
-                float barrierH = 0.92f;
-                float barrierW = 0.22f;
+                float barrierH = 0.95f;
+                float barrierW = 0.24f;
 
                 if (isChicaneZone)
                 {
                     mat = (i % 3 == 0) ? tecproRed : ((i % 3 == 1) ? tecproWhite : tecproBlue);
-                    barrierH = 1.05f;
-                    barrierW = 0.55f;
+                    barrierH = 1.08f;
+                    barrierW = 0.56f;
                 }
 
-                // Left & Right continuous barrier rails
                 for (int side = -1; side <= 1; side += 2)
                 {
                     Vector3 railPos = center + lat * (side * halfWidth) + norm * (barrierH * 0.5f);
 
-                    // Safety check: verify this barrier does not encroach into ANY non-adjacent track ribbon (< 7.0m)
+                    // Safety clearance check
                     bool encroaches = false;
                     float safeDistSq = 7.0f * 7.0f;
                     for (int k = 0; k < checkSamples; k++)
@@ -171,11 +181,9 @@ namespace F1Sim.Track
                             }
                         }
                     }
-                    if (encroaches)
-                    {
-                        continue; // Encroaches on another track ribbon, skip to keep track 100% clear
-                    }
+                    if (encroaches) continue;
 
+                    // Corrugated Armco Rail
                     GameObject rail = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     rail.name = $"Barrier_{i}_{(side < 0 ? "L" : "R")}";
                     rail.transform.SetParent(barrierObj.transform, false);
@@ -183,6 +191,29 @@ namespace F1Sim.Track
                     rail.transform.rotation = rot;
                     rail.transform.localScale = new Vector3(barrierW, barrierH, step * 1.02f);
                     rail.GetComponent<Renderer>().sharedMaterial = mat;
+
+                    // FIA Catch Fencing Posts atop Armco Barrier every 24m
+                    if (i % 2 == 0)
+                    {
+                        GameObject post = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                        post.name = $"Fence_Post_{i}_{(side < 0 ? "L" : "R")}";
+                        post.transform.SetParent(barrierObj.transform, false);
+                        post.transform.position = railPos + norm * (barrierH * 0.5f + 1.1f);
+                        post.transform.rotation = rot;
+                        post.transform.localScale = new Vector3(0.08f, 1.1f, 0.08f);
+                        Destroy(post.GetComponent<Collider>());
+                        post.GetComponent<Renderer>().sharedMaterial = fencePostMat;
+
+                        // Top horizontal catch cable
+                        GameObject cable = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                        cable.name = $"Fence_Cable_{i}_{(side < 0 ? "L" : "R")}";
+                        cable.transform.SetParent(barrierObj.transform, false);
+                        cable.transform.position = railPos + norm * (barrierH * 0.5f + 2.15f);
+                        cable.transform.rotation = rot;
+                        cable.transform.localScale = new Vector3(0.03f, 0.03f, step * 2.05f);
+                        Destroy(cable.GetComponent<Collider>());
+                        cable.GetComponent<Renderer>().sharedMaterial = fencePostMat;
+                    }
                 }
             }
         }
@@ -193,19 +224,10 @@ namespace F1Sim.Track
             standsObj.transform.SetParent(parent, false);
 
             Material roofMat = F1Palette.GetOrCreateMaterial("Mat_StandRoof", new Color(0.92f, 0.94f, 0.96f), 0.30f, 0.65f);
-            Material structureMat = F1Palette.GetOrCreateMaterial("Mat_StandSteel", new Color(0.20f, 0.22f, 0.26f), 0.60f, 0.50f);
-            Material bannerRed = F1Palette.GetOrCreateMaterial("Mat_StandBannerRed", F1Palette.RacingRed, 0.2f, 0.7f);
+            Material structureMat = F1Palette.GetOrCreateMaterial("Mat_StandSteel", new Color(0.20f, 0.22f, 0.26f), 0.70f, 0.55f);
+            Material bannerRed = F1Palette.GetOrCreateMaterial("Mat_StandBannerRed", F1Palette.RacingRed, 0.2f, 0.75f, null, null, false, null, 1.0f, clearcoat: 0.8f);
             Material pitGlassMat = F1Palette.GetOrCreateMaterial("Mat_PitBuildingGlass", new Color(0.14f, 0.24f, 0.36f), 0.85f, 0.92f);
 
-            // Official Monza Grandstand Complexes (numbered 1..35 per official Monza circuit map)
-            // Main Straight Left: 1, 2, 3, 4, 5, 8A/B (s = 60..900)
-            // Rettifilo Chicane: 8B, 9, 10 (s = 1250)
-            // Roggia Chicane: 11, 12, 13 (s = 2220)
-            // Lesmo 1 & 2: 14, 16, 17, 18 (s = 2480)
-            // Serraglio: 21, 22 (s = 3200)
-            // Variante Ascari: 23, 24, 25, 26, 27, 28 (s = 4250..4420)
-            // Rettifilo Parabolica: 29, 30 (s = 4850)
-            // Parabolica Alboreto: 32, 33, 34, 35 (s = 5450, 5650)
             float[] standS     = new float[] { 60.0f, 200.0f, 400.0f, 650.0f, 900.0f, 1250.0f, 2220.0f, 2480.0f, 3200.0f, 4250.0f, 4420.0f, 4850.0f, 5450.0f, 5650.0f };
             float[] standSides = new float[] { -1.0f,  -1.0f,  -1.0f,  -1.0f,  -1.0f,   -1.0f,   -1.0f,   -1.0f,    1.0f,   -1.0f,    1.0f,   -1.0f,    1.0f,    1.0f };
 
@@ -232,7 +254,7 @@ namespace F1Sim.Track
                 Destroy(seating.GetComponent<Collider>());
                 seating.GetComponent<Renderer>().sharedMaterial = grandstandMaterial;
 
-                // Rear concrete/steel structural wall
+                // Rear steel structural wall
                 GameObject backWall = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 backWall.name = "Stand_Backwall";
                 backWall.transform.SetParent(standGroup.transform, false);
@@ -260,7 +282,7 @@ namespace F1Sim.Track
                 fascia.GetComponent<Renderer>().sharedMaterial = bannerRed;
             }
 
-            // Pit Lane Garages & Hospitality Building along Right Side of Main Straight (s = 40..360m)
+            // Pit Lane Garages & Hospitality Building along Right Side of Main Straight
             for (int p = 0; p < 4; p++)
             {
                 float sPit = 50.0f + p * 75.0f;
@@ -297,7 +319,7 @@ namespace F1Sim.Track
                 spline.GetFrenetFrame(s, out Vector3 tan, out Vector3 lat, out Vector3 norm);
                 Quaternion rot = Quaternion.LookRotation(tan, norm);
 
-                // Check if this is the Historic Sopraelevata High-Speed Oval Banking Overpass
+                // Sopraelevata High-Speed Oval Banking Overpass
                 if (Mathf.Abs(s - 3523.0f) < 10.0f)
                 {
                     GameObject historicBridge = new GameObject("Monza_Historic_Sopraelevata_Overpass");
@@ -308,7 +330,6 @@ namespace F1Sim.Track
                     float clearHeight = 8.5f;
                     float bridgeSpan = MonzaTrackData.TrackWidth + 14.0f;
 
-                    // Heavy historic reinforced concrete abutments
                     for (int side = -1; side <= 1; side += 2)
                     {
                         GameObject abutment = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -319,17 +340,16 @@ namespace F1Sim.Track
                         abutment.GetComponent<Renderer>().sharedMaterial = historicConcreteMat;
                     }
 
-                    // Banked Oval Track deck cutting across above Serraglio at 28-degree inclination
+                    // Banked Oval Track deck at 26-degree inclination
                     GameObject bankedOval = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     bankedOval.name = "Sopraelevata_Banked_Oval_Deck";
                     bankedOval.transform.SetParent(historicBridge.transform, false);
                     bankedOval.transform.localPosition = new Vector3(0.0f, clearHeight + 1.2f, 0.0f);
-                    bankedOval.transform.localRotation = Quaternion.Euler(0.0f, 90.0f, 26.0f); // 26-degree historic banking angle
+                    bankedOval.transform.localRotation = Quaternion.Euler(0.0f, 90.0f, 26.0f);
                     bankedOval.transform.localScale = new Vector3(14.0f, 1.4f, bridgeSpan + 12.0f);
                     bankedOval.GetComponent<Renderer>().sharedMaterial = historicTarmacMat;
                     Destroy(bankedOval.GetComponent<Collider>());
 
-                    // Historic concrete parapet safety wall
                     GameObject parapet = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     parapet.name = "Sopraelevata_Parapet_Wall";
                     parapet.transform.SetParent(historicBridge.transform, false);
@@ -374,6 +394,7 @@ namespace F1Sim.Track
 
             Material boardMat = F1Palette.GetOrCreateMaterial("Mat_BrakeBoard", F1Palette.TrackLineWhite, 0.1f, 0.4f);
 
+            // Braking zones for Rettifilo (1180m), Roggia (2160m), Lesmo 1 & 2 (2360m), Ascari (4180m), Parabolica (5220m)
             float[] cornerEntries = new float[] { 1180.0f, 2160.0f, 2360.0f, 4180.0f, 5220.0f };
             foreach (float sCorner in cornerEntries)
             {
@@ -386,11 +407,11 @@ namespace F1Sim.Track
                 bed.transform.SetParent(gravelObj.transform, false);
                 bed.transform.position = pos - lat * 12.0f + norm * 0.01f;
                 bed.transform.rotation = Quaternion.LookRotation(tan, norm);
-                bed.transform.localScale = new Vector3(11.0f, 0.04f, 65.0f);
+                bed.transform.localScale = new Vector3(12.0f, 0.04f, 70.0f);
                 Destroy(bed.GetComponent<Collider>());
                 bed.GetComponent<Renderer>().sharedMaterial = gravelMaterial;
 
-                // 150m, 100m, 50m Braking Distance Boards on Track Left
+                // 150m, 100m, 50m Braking Distance Boards
                 float[] dists = new float[] { 150.0f, 100.0f, 50.0f };
                 foreach (float d in dists)
                 {
@@ -430,7 +451,6 @@ namespace F1Sim.Track
 
                 for (int side = -1; side <= 1; side += 2)
                 {
-                    // Leave room for grandstands on main straight
                     float minOffset = (s < 600.0f) ? 32.0f : 15.5f;
                     float distFromCenter = minOffset + (float)rng.NextDouble() * 24.0f;
                     float scaleVar = 0.85f + (float)rng.NextDouble() * 0.55f;
@@ -453,7 +473,7 @@ namespace F1Sim.Track
 
                     if (isUmbrellaPine)
                     {
-                        // Mediterranean Umbrella Pine: wide flat-topped layered canopy
+                        // Mediterranean Umbrella Pine
                         GameObject lowerCrown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                         lowerCrown.transform.SetParent(tree.transform, false);
                         lowerCrown.transform.localPosition = new Vector3(0.0f, 6.4f, 0.0f);
@@ -489,19 +509,19 @@ namespace F1Sim.Track
 
             Material mountainMat = F1Palette.GetOrCreateMaterial(
                 "Mat_DistantAlps",
-                new Color(0.32f, 0.42f, 0.56f),
+                new Color(0.38f, 0.44f, 0.58f),
                 0.0f,
-                0.10f);
+                0.12f);
 
-            int peaks = 28;
-            float radius = 4000.0f;
+            int peaks = 32;
+            float radius = 4200.0f;
             Vector3 ringCenter = new Vector3(250.0f, -10.0f, 1100.0f);
 
             for (int i = 0; i < peaks; i++)
             {
                 float angle = (i / (float)peaks) * Mathf.PI * 2.0f;
-                float h = 140.0f + (i % 5) * 45.0f;
-                float w = 360.0f + (i % 3) * 90.0f;
+                float h = 160.0f + (i % 5) * 55.0f;
+                float w = 380.0f + (i % 3) * 95.0f;
 
                 Vector3 pos = ringCenter + new Vector3(Mathf.Cos(angle) * radius, h * 0.35f, Mathf.Sin(angle) * radius);
                 GameObject peak = GameObject.CreatePrimitive(PrimitiveType.Cube);
